@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const { initDatabase } = require('./models/db');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -34,8 +35,19 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: '服务器内部错误' });
 });
 
-app.listen(PORT, () => {
-  console.log(`🎹 琴行管理系统后端已启动 http://localhost:${PORT}`);
-});
+// 初始化数据库后启动服务器
+async function startServer() {
+  try {
+    await initDatabase();
+    app.listen(PORT, () => {
+      console.log(`🎹 琴行管理系统后端已启动 http://localhost:${PORT}`);
+    });
+  } catch (err) {
+    console.error('❌ 服务器启动失败:', err.message);
+    process.exit(1);
+  }
+}
+
+startServer();
 
 module.exports = app;

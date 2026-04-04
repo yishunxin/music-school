@@ -3,8 +3,9 @@
 ## 项目记忆
 
 ### 琴行课时管理系统
-- 技术栈: React + Node.js + Express + SQLite
+- 技术栈: React + Node.js + Express + MySQL (原 SQLite)
 - 项目路径: /Users/yishunxin/WorkBuddy/20260329231952
+- GitHub: https://github.com/yishunxin/music-school
 - 后端端口: 3001
 - 前端端口: 5173
 - 默认管理员账号: admin / 123456
@@ -49,4 +50,5 @@
 - /transactions - 财务管理
 
 ### 文档
-- CHANGELOG.md - 版本变更记录（v0.0.1 初始版本）
+- CHANGELOG.md - 版本变更记录（v0.0.1 初始版本, v0.0.2 MySQL迁移）
+- DEPLOY.md - 云服务器部署指南
