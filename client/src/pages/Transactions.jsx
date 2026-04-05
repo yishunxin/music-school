@@ -229,15 +229,15 @@ export default function Transactions() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-green-50 rounded-xl p-5">
               <p className="text-sm text-green-600">总收入</p>
-              <p className="text-2xl font-bold text-green-700">¥{stats.totalIncome?.toFixed(2) || 0}</p>
+              <p className="text-2xl font-bold text-green-700">¥{Number(stats.totalIncome || 0).toFixed(2)}</p>
             </div>
             <div className="bg-red-50 rounded-xl p-5">
               <p className="text-sm text-red-600">总支出</p>
-              <p className="text-2xl font-bold text-red-700">¥{stats.totalExpense?.toFixed(2) || 0}</p>
+              <p className="text-2xl font-bold text-red-700">¥{Number(stats.totalExpense || 0).toFixed(2)}</p>
             </div>
             <div className="bg-blue-50 rounded-xl p-5">
               <p className="text-sm text-blue-600">净利润</p>
-              <p className="text-2xl font-bold text-blue-700">¥{stats.netProfit?.toFixed(2) || 0}</p>
+              <p className="text-2xl font-bold text-blue-700">¥{Number(stats.netProfit || 0).toFixed(2)}</p>
             </div>
           </div>
 
@@ -248,7 +248,7 @@ export default function Transactions() {
                 {stats.incomeByCategory?.map((item) => (
                   <div key={item.category} className="flex justify-between items-center">
                     <span className="text-gray-600">{item.category}</span>
-                    <span className="font-medium text-green-600">¥{item.total.toFixed(2)}</span>
+                    <span className="font-medium text-green-600">¥{Number(item.total).toFixed(2)}</span>
                   </div>
                 ))}
                 {(!stats.incomeByCategory || stats.incomeByCategory.length === 0) && (
@@ -263,7 +263,7 @@ export default function Transactions() {
                 {stats.expenseByCategory?.map((item) => (
                   <div key={item.category} className="flex justify-between items-center">
                     <span className="text-gray-600">{item.category}</span>
-                    <span className="font-medium text-red-600">¥{item.total.toFixed(2)}</span>
+                    <span className="font-medium text-red-600">¥{Number(item.total).toFixed(2)}</span>
                   </div>
                 ))}
                 {(!stats.expenseByCategory || stats.expenseByCategory.length === 0) && (
@@ -280,8 +280,8 @@ export default function Transactions() {
                 <div key={item.month} className="flex justify-between items-center">
                   <span className="text-gray-600">{item.month}</span>
                   <div className="flex gap-4">
-                    <span className="text-green-600">收入 ¥{item.income?.toFixed(2) || 0}</span>
-                    <span className="text-red-600">支出 ¥{item.expense?.toFixed(2) || 0}</span>
+                    <span className="text-green-600">收入 ¥{Number(item.income || 0).toFixed(2)}</span>
+                    <span className="text-red-600">支出 ¥{Number(item.expense || 0).toFixed(2)}</span>
                   </div>
                 </div>
               ))}
@@ -355,8 +355,8 @@ export default function Transactions() {
                     <td className="px-4 py-3 text-sm font-medium text-gray-800">{s.teacher_name}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{s.month}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{s.total_hours}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">¥{s.unit_price?.toFixed(2)}</td>
-                    <td className="px-4 py-3 text-sm font-medium text-blue-600">¥{s.total_fee?.toFixed(2)}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">¥{Number(s.unit_price || 0).toFixed(2)}</td>
+                    <td className="px-4 py-3 text-sm font-medium text-blue-600">¥{Number(s.total_fee || 0).toFixed(2)}</td>
                     <td className="px-4 py-3 text-sm">
                       <span className={`px-2 py-1 rounded-full text-xs ${s.status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
                         {s.status === 'paid' ? '已发放' : '待发放'}

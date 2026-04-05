@@ -12,7 +12,10 @@ import Transactions from './pages/Transactions';
 import './App.css';
 
 function PrivateRoute({ children }) {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+  if (loading) {
+    return <div className="flex items-center justify-center min-h-screen">加载中...</div>;
+  }
   return user ? children : <Navigate to="/login" />;
 }
 

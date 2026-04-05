@@ -52,7 +52,7 @@ export default function Dashboard() {
         </div>
         <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl p-5 text-white">
           <p className="text-sm opacity-80">本月净利润</p>
-          <p className="text-3xl font-bold">¥{(financialStats?.netProfit || 0).toFixed(0)}</p>
+          <p className="text-3xl font-bold">¥{Number(financialStats?.netProfit || 0).toFixed(0)}</p>
         </div>
       </div>
 
@@ -157,11 +157,11 @@ export default function Dashboard() {
             <p className="text-xs text-gray-500">剩余课时</p>
           </div>
           <div className="text-center p-3 bg-gray-50 rounded-lg">
-            <p className="text-2xl font-bold text-green-600">¥{(financialStats?.totalIncome || 0).toFixed(0)}</p>
+            <p className="text-2xl font-bold text-green-600">¥{Number(financialStats?.totalIncome || 0).toFixed(0)}</p>
             <p className="text-xs text-gray-500">总收入</p>
           </div>
           <div className="text-center p-3 bg-gray-50 rounded-lg">
-            <p className="text-2xl font-bold text-red-600">¥{(financialStats?.totalExpense || 0).toFixed(0)}</p>
+            <p className="text-2xl font-bold text-red-600">¥{Number(financialStats?.totalExpense || 0).toFixed(0)}</p>
             <p className="text-xs text-gray-500">总支出</p>
           </div>
         </div>
