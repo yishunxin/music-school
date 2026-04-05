@@ -41,6 +41,11 @@
 - **2026-04-05**: 修复前端API地址硬编码为localhost导致微信内无法登录的问题
   - 修改 `client/src/api/index.js`: `http://localhost:3001/api` → `/api` (相对路径)
   - 重新构建部署到服务器
+- **2026-04-05 (晚)**: 修复登录后刷新页面跳转回登录页的问题
+  - 问题原因：`PrivateRoute` 未检查 `loading` 状态，在API返回前就重定向
+  - 修复：`App.jsx` 中添加 `loading` 检查，显示加载状态
+  - 同步修复：`Dashboard.jsx` 和 `Transactions.jsx` 中 `toFixed` 类型错误，使用 `Number()` 转换
+  - Caddy配置：添加SPA路由支持，确保 `/dashboard` 等路由返回 index.html
 
 ### 数据库表
 - users (管理员账号)
