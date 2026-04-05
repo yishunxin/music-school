@@ -29,6 +29,13 @@
 - 课时不足提醒：剩余课时 <= 1 时提醒
 - 工资月结：根据教师上课记录汇总
 
+### 云服务器部署
+- 服务器IP: 47.122.126.137
+- SSH密钥: ~/Downloads/keyPairForMac.pem
+- 数据库: music_school / MusicSchool@2026
+- 已安装: Node.js 20, PM2, MariaDB 10.5, Caddy
+- 服务状态: 运行中
+
 ### 数据库表
 - users (管理员账号)
 - teachers (教师信息，关联可教授的科目)

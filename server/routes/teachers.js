@@ -5,7 +5,7 @@ const { authMiddleware } = require('../middleware/auth');
 const router = express.Router();
 
 // 获取教师列表
-router.get('/', authMiddleware, (req, res) => {
+router.get('/', authMiddleware, async (req, res) => {
   try {
     const { status } = req.query;
     let sql = `
@@ -27,7 +27,7 @@ router.get('/', authMiddleware, (req, res) => {
 
     sql += ' GROUP BY t.id ORDER BY t.created_at DESC';
 
-    const teachers = db.prepare(sql).all(...params);
+    const teachers = await db.query(sql, params);
     res.json(teachers);
   } catch (err) {
     console.error('Get teachers error:', err);
@@ -36,28 +36,29 @@ router.get('/', authMiddleware, (req, res) => {
 });
 
 // 获取单个教师
-router.get('/:id', authMiddleware, (req, res) => {
+router.get('/:id', authMiddleware, async (req, res) => {
   try {
-    const teacher = db.prepare('SELECT * FROM teachers WHERE id = ?').get(req.params.id);
+    const teachers = await db.query('SELECT * FROM teachers WHERE id = ?', [req.params.id]);
+    const teacher = teachers[0];
     if (!teacher) {
       return res.status(404).json({ error: '教师不存在' });
     }
 
     // 获取该教师的学生列表
-    const students = db.prepare(`
+    const students = await db.query(`
       SELECT s.*, ct.name as course_type_name
       FROM students s
       LEFT JOIN course_types ct ON ct.id = s.course_type_id
       WHERE s.teacher_id = ? AND s.status = 'active'
-    `).all(req.params.id);
+    `, [req.params.id]);
 
     // 获取该教师能教授的课程类型
-    const courseTypes = db.prepare(`
+    const courseTypes = await db.query(`
       SELECT DISTINCT ct.*
       FROM course_types ct
       INNER JOIN students s ON s.course_type_id = ct.id
       WHERE s.teacher_id = ? AND ct.status = 'active'
-    `).all(req.params.id);
+    `, [req.params.id]);
 
     res.json({ ...teacher, students, courseTypes });
   } catch (err) {
@@ -66,7 +67,7 @@ router.get('/:id', authMiddleware, (req, res) => {
 });
 
 // 创建教师
-router.post('/', authMiddleware, (req, res) => {
+router.post('/', authMiddleware, async (req, res) => {
   try {
     const { name, phone, subjects, hire_date, memo } = req.body;
 
@@ -75,29 +76,30 @@ router.post('/', authMiddleware, (req, res) => {
     }
 
     const subjectsJson = subjects ? JSON.stringify(subjects) : null;
-    const result = db.prepare(`
+    const result = await db.query(`
       INSERT INTO teachers (name, phone, subjects, hire_date, memo)
       VALUES (?, ?, ?, ?, ?)
-    `).run(name, phone, subjectsJson, hire_date, memo);
+    `, [name, phone, subjectsJson, hire_date, memo]);
 
-    res.json({ id: result.lastInsertRowid, message: '创建成功' });
+    res.json({ id: result.insertId, message: '创建成功' });
   } catch (err) {
     res.status(500).json({ error: '服务器错误' });
   }
 });
 
 // 更新教师
-router.put('/:id', authMiddleware, (req, res) => {
+router.put('/:id', authMiddleware, async (req, res) => {
   try {
     const { name, phone, subjects, hire_date, memo, status } = req.body;
 
-    const teacher = db.prepare('SELECT * FROM teachers WHERE id = ?').get(req.params.id);
+    const teachers = await db.query('SELECT * FROM teachers WHERE id = ?', [req.params.id]);
+    const teacher = teachers[0];
     if (!teacher) {
       return res.status(404).json({ error: '教师不存在' });
     }
 
     const subjectsJson = subjects ? JSON.stringify(subjects) : undefined;
-    db.prepare(`
+    await db.query(`
       UPDATE teachers SET
         name = COALESCE(?, name),
         phone = COALESCE(?, phone),
@@ -106,7 +108,7 @@ router.put('/:id', authMiddleware, (req, res) => {
         memo = COALESCE(?, memo),
         status = COALESCE(?, status)
       WHERE id = ?
-    `).run(name, phone, subjectsJson, hire_date, memo, status, req.params.id);
+    `, [name, phone, subjectsJson, hire_date, memo, status, req.params.id]);
 
     res.json({ message: '更新成功' });
   } catch (err) {
@@ -115,15 +117,15 @@ router.put('/:id', authMiddleware, (req, res) => {
 });
 
 // 删除教师
-router.delete('/:id', authMiddleware, (req, res) => {
+router.delete('/:id', authMiddleware, async (req, res) => {
   try {
     // 检查是否有学生关联
-    const studentCount = db.prepare('SELECT COUNT(*) as count FROM students WHERE teacher_id = ? AND status = ?').get(req.params.id, 'active');
-    if (studentCount.count > 0) {
+    const studentCount = await db.query('SELECT COUNT(*) as count FROM students WHERE teacher_id = ? AND status = ?', [req.params.id, 'active']);
+    if (studentCount[0].count > 0) {
       return res.status(400).json({ error: '该教师有学生关联，无法删除' });
     }
 
-    db.prepare('DELETE FROM teachers WHERE id = ?').run(req.params.id);
+    await db.query('DELETE FROM teachers WHERE id = ?', [req.params.id]);
     res.json({ message: '删除成功' });
   } catch (err) {
     res.status(500).json({ error: '服务器错误' });

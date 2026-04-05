@@ -5,7 +5,8 @@ const { authMiddleware } = require('../middleware/auth');
 const router = express.Router();
 
 // 课时充值
-router.post('/recharge', authMiddleware, (req, res) => {
+router.post('/recharge', authMiddleware, async (req, res) => {
+  let connection;
   try {
     const { student_id, course_type_id, teacher_id, buy_hours, gift_hours, total_fee, recharge_date, memo } = req.body;
 
@@ -14,20 +15,21 @@ router.post('/recharge', authMiddleware, (req, res) => {
     }
 
     // 验证学生存在
-    const student = db.prepare('SELECT * FROM students WHERE id = ? AND status = ?').get(student_id, 'active');
+    const students = await db.query('SELECT * FROM students WHERE id = ? AND status = ?', [student_id, 'active']);
+    const student = students[0];
     if (!student) {
       return res.status(400).json({ error: '学生不存在' });
     }
 
     // 验证教师存在
-    const teacher = db.prepare('SELECT * FROM teachers WHERE id = ? AND status = ?').get(teacher_id, 'active');
-    if (!teacher) {
+    const teachers = await db.query('SELECT * FROM teachers WHERE id = ? AND status = ?', [teacher_id, 'active']);
+    if (!teachers[0]) {
       return res.status(400).json({ error: '教师不存在' });
     }
 
     // 验证课程类型存在
-    const courseType = db.prepare('SELECT * FROM course_types WHERE id = ? AND status = ?').get(course_type_id, 'active');
-    if (!courseType) {
+    const courseTypes = await db.query('SELECT * FROM course_types WHERE id = ? AND status = ?', [course_type_id, 'active']);
+    if (!courseTypes[0]) {
       return res.status(400).json({ error: '课程类型不存在' });
     }
 
@@ -37,37 +39,40 @@ router.post('/recharge', authMiddleware, (req, res) => {
     // 每节个点费 = 总费用 / 购买课时 / 2
     const unit_point_fee = buy > 0 ? fee / buy / 2 : 0;
 
-    // 开启事务
-    const transaction = db.transaction(() => {
-      // 1. 创建充值记录
-      const rechargeResult = db.prepare(`
-        INSERT INTO recharges (student_id, course_type_id, teacher_id, buy_hours, gift_hours, total_hours, total_fee, unit_point_fee, recharge_date, memo)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(student_id, course_type_id, teacher_id, buy_hours, gift_hours || 0, total_hours, fee, unit_point_fee, recharge_date || new Date().toISOString().split('T')[0], memo);
+    connection = await db.getConnection();
+    await connection.beginTransaction();
 
-      // 2. 更新学生剩余课时
-      db.prepare('UPDATE students SET remaining_hours = remaining_hours + ? WHERE id = ?').run(total_hours, student_id);
+    // 1. 创建充值记录
+    const [rechargeResult] = await connection.query(`
+      INSERT INTO recharges (student_id, course_type_id, teacher_id, buy_hours, gift_hours, total_hours, total_fee, unit_point_fee, recharge_date, memo)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [student_id, course_type_id, teacher_id, buy_hours, gift_hours || 0, total_hours, fee, unit_point_fee, recharge_date || new Date().toISOString().split('T')[0], memo]);
 
-      // 3. 创建收入记录
-      db.prepare(`
-        INSERT INTO transactions (type, amount, category, ref_id, ref_type, description, transaction_date)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run('income', fee, '课时收入', rechargeResult.lastInsertRowid, 'recharge', `学生${student.name}充值${total_hours}课时`, recharge_date || new Date().toISOString().split('T')[0]);
+    const recharge_id = rechargeResult.insertId;
 
-      return rechargeResult.lastInsertRowid;
-    });
+    // 2. 更新学生剩余课时
+    await connection.query('UPDATE students SET remaining_hours = remaining_hours + ? WHERE id = ?', [total_hours, student_id]);
 
-    const recharge_id = transaction();
+    // 3. 创建收入记录
+    await connection.query(`
+      INSERT INTO transactions (type, amount, category, ref_id, ref_type, description, transaction_date)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `, ['income', fee, '课时收入', recharge_id, 'recharge', `学生${student.name}充值${total_hours}课时`, recharge_date || new Date().toISOString().split('T')[0]]);
+
+    await connection.commit();
 
     res.json({ id: recharge_id, message: '充值成功', unit_point_fee });
   } catch (err) {
+    if (connection) await connection.rollback();
     console.error('Recharge error:', err);
     res.status(500).json({ error: '服务器错误' });
+  } finally {
+    if (connection) connection.release();
   }
 });
 
 // 获取充值记录
-router.get('/recharges', authMiddleware, (req, res) => {
+router.get('/recharges', authMiddleware, async (req, res) => {
   try {
     const { student_id, start_date, end_date } = req.query;
 
@@ -102,7 +107,7 @@ router.get('/recharges', authMiddleware, (req, res) => {
 
     sql += ' ORDER BY r.recharge_date DESC, r.created_at DESC';
 
-    const recharges = db.prepare(sql).all(...params);
+    const recharges = await db.query(sql, params);
     res.json(recharges);
   } catch (err) {
     res.status(500).json({ error: '服务器错误' });
@@ -110,7 +115,8 @@ router.get('/recharges', authMiddleware, (req, res) => {
 });
 
 // 上课签到
-router.post('/signin', authMiddleware, (req, res) => {
+router.post('/signin', authMiddleware, async (req, res) => {
+  let connection;
   try {
     const { student_id, hours, course_date, memo } = req.body;
 
@@ -119,12 +125,13 @@ router.post('/signin', authMiddleware, (req, res) => {
     }
 
     // 验证学生存在
-    const student = db.prepare(`
+    const students = await db.query(`
       SELECT s.*, ct.price as unit_price
       FROM students s
       LEFT JOIN course_types ct ON ct.id = s.course_type_id
       WHERE s.id = ? AND s.status = ?
-    `).get(student_id, 'active');
+    `, [student_id, 'active']);
+    const student = students[0];
 
     if (!student) {
       return res.status(400).json({ error: '学生不存在' });
@@ -138,60 +145,64 @@ router.post('/signin', authMiddleware, (req, res) => {
     }
 
     // 获取该学生最近一次充值记录，用于计算教师费用
-    const lastRecharge = db.prepare(`
+    const lastRecharges = await db.query(`
       SELECT * FROM recharges
       WHERE student_id = ? AND buy_hours > 0
       ORDER BY recharge_date DESC, id DESC
       LIMIT 1
-    `).get(student_id);
+    `, [student_id]);
+    const lastRecharge = lastRecharges[0];
 
     const unit_fee = lastRecharge ? lastRecharge.unit_point_fee : 0;
     const total_fee = unit_fee * consumeHours;
 
-    // 开启事务
-    const transaction = db.transaction(() => {
-      // 1. 创建上课记录
-      const logResult = db.prepare(`
-        INSERT INTO course_logs (student_id, teacher_id, course_type_id, hours, unit_fee, total_fee, course_date, recharge_id, memo)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        student_id,
-        student.teacher_id,
-        student.course_type_id,
-        consumeHours,
-        unit_fee,
-        total_fee,
-        course_date || new Date().toISOString(),
-        lastRecharge ? lastRecharge.id : null,
-        memo
-      );
+    connection = await db.getConnection();
+    await connection.beginTransaction();
 
-      // 2. 扣减学生剩余课时
-      db.prepare('UPDATE students SET remaining_hours = remaining_hours - ? WHERE id = ?').run(consumeHours, student_id);
+    // 1. 创建上课记录
+    const [logResult] = await connection.query(`
+      INSERT INTO course_logs (student_id, teacher_id, course_type_id, hours, unit_fee, total_fee, course_date, recharge_id, memo)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      student_id,
+      student.teacher_id,
+      student.course_type_id,
+      consumeHours,
+      unit_fee,
+      total_fee,
+      course_date || new Date().toISOString(),
+      lastRecharge ? lastRecharge.id : null,
+      memo
+    ]);
 
-      // 3. 创建支出记录（教师工资）
-      if (total_fee > 0) {
-        const courseDateStr = course_date ? new Date(course_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
-        db.prepare(`
-          INSERT INTO transactions (type, amount, category, ref_id, ref_type, description, transaction_date)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).run('expense', total_fee, '教师工资', logResult.lastInsertRowid, 'course', `学生${student.name}上课，教师${student.teacher_id}`, courseDateStr);
-      }
+    const log_id = logResult.insertId;
 
-      return logResult.lastInsertRowid;
-    });
+    // 2. 扣减学生剩余课时
+    await connection.query('UPDATE students SET remaining_hours = remaining_hours - ? WHERE id = ?', [consumeHours, student_id]);
 
-    const log_id = transaction();
+    // 3. 创建支出记录（教师工资）
+    if (total_fee > 0) {
+      const courseDateStr = course_date ? new Date(course_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+      await connection.query(`
+        INSERT INTO transactions (type, amount, category, ref_id, ref_type, description, transaction_date)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `, ['expense', total_fee, '教师工资', log_id, 'course', `学生${student.name}上课，教师${student.teacher_id}`, courseDateStr]);
+    }
+
+    await connection.commit();
 
     res.json({ id: log_id, message: '签到成功', remaining_hours: student.remaining_hours - consumeHours });
   } catch (err) {
+    if (connection) await connection.rollback();
     console.error('Signin error:', err);
     res.status(500).json({ error: '服务器错误' });
+  } finally {
+    if (connection) connection.release();
   }
 });
 
 // 获取上课记录
-router.get('/logs', authMiddleware, (req, res) => {
+router.get('/logs', authMiddleware, async (req, res) => {
   try {
     const { student_id, teacher_id, start_date, end_date } = req.query;
 
@@ -231,7 +242,7 @@ router.get('/logs', authMiddleware, (req, res) => {
 
     sql += ' ORDER BY cl.course_date DESC';
 
-    const logs = db.prepare(sql).all(...params);
+    const logs = await db.query(sql, params);
     res.json(logs);
   } catch (err) {
     res.status(500).json({ error: '服务器错误' });
@@ -239,40 +250,45 @@ router.get('/logs', authMiddleware, (req, res) => {
 });
 
 // 删除上课记录（退课）
-router.delete('/logs/:id', authMiddleware, (req, res) => {
+router.delete('/logs/:id', authMiddleware, async (req, res) => {
+  let connection;
   try {
-    const log = db.prepare('SELECT * FROM course_logs WHERE id = ?').get(req.params.id);
+    const logs = await db.query('SELECT * FROM course_logs WHERE id = ?', [req.params.id]);
+    const log = logs[0];
     if (!log) {
       return res.status(404).json({ error: '记录不存在' });
     }
 
-    const student = db.prepare('SELECT * FROM students WHERE id = ?').get(log.student_id);
-    if (!student) {
+    const students = await db.query('SELECT * FROM students WHERE id = ?', [log.student_id]);
+    if (!students[0]) {
       return res.status(404).json({ error: '学生不存在' });
     }
 
-    // 开启事务
-    const transaction = db.transaction(() => {
-      // 1. 恢复学生课时
-      db.prepare('UPDATE students SET remaining_hours = remaining_hours + ? WHERE id = ?').run(log.hours, log.student_id);
+    connection = await db.getConnection();
+    await connection.beginTransaction();
 
-      // 2. 删除关联的收入支出记录
-      db.prepare('DELETE FROM transactions WHERE ref_id = ? AND ref_type = ?').run(log.id, 'course');
+    // 1. 恢复学生课时
+    await connection.query('UPDATE students SET remaining_hours = remaining_hours + ? WHERE id = ?', [log.hours, log.student_id]);
 
-      // 3. 删除上课记录
-      db.prepare('DELETE FROM course_logs WHERE id = ?').run(log.id);
-    });
+    // 2. 删除关联的收入支出记录
+    await connection.query('DELETE FROM transactions WHERE ref_id = ? AND ref_type = ?', [log.id, 'course']);
 
-    transaction();
+    // 3. 删除上课记录
+    await connection.query('DELETE FROM course_logs WHERE id = ?', [log.id]);
+
+    await connection.commit();
 
     res.json({ message: '退课成功' });
   } catch (err) {
+    if (connection) await connection.rollback();
     res.status(500).json({ error: '服务器错误' });
+  } finally {
+    if (connection) connection.release();
   }
 });
 
 // 获取课时统计
-router.get('/stats', authMiddleware, (req, res) => {
+router.get('/stats', authMiddleware, async (req, res) => {
   try {
     const stats = {
       total_students: 0,
@@ -283,12 +299,23 @@ router.get('/stats', authMiddleware, (req, res) => {
       total_remaining: 0
     };
 
-    stats.total_students = db.prepare('SELECT COUNT(*) as count FROM students WHERE status = ?').get('active').count;
-    stats.total_teachers = db.prepare('SELECT COUNT(*) as count FROM teachers WHERE status = ?').get('active').count;
-    stats.total_recharges = db.prepare('SELECT COUNT(*) as count FROM recharges').get().count;
-    stats.total_hours_sold = db.prepare('SELECT COALESCE(SUM(total_hours), 0) as total FROM recharges').get().total;
-    stats.total_hours_consumed = db.prepare('SELECT COALESCE(SUM(hours), 0) as total FROM course_logs').get().total;
-    stats.total_remaining = db.prepare('SELECT COALESCE(SUM(remaining_hours), 0) as total FROM students WHERE status = ?').get('active').total;
+    const studentCount = await db.query('SELECT COUNT(*) as count FROM students WHERE status = ?', ['active']);
+    stats.total_students = studentCount[0].count;
+
+    const teacherCount = await db.query('SELECT COUNT(*) as count FROM teachers WHERE status = ?', ['active']);
+    stats.total_teachers = teacherCount[0].count;
+
+    const rechargeCount = await db.query('SELECT COUNT(*) as count FROM recharges');
+    stats.total_recharges = rechargeCount[0].count;
+
+    const hoursSold = await db.query('SELECT COALESCE(SUM(total_hours), 0) as total FROM recharges');
+    stats.total_hours_sold = hoursSold[0].total;
+
+    const hoursConsumed = await db.query('SELECT COALESCE(SUM(hours), 0) as total FROM course_logs');
+    stats.total_hours_consumed = hoursConsumed[0].total;
+
+    const remaining = await db.query('SELECT COALESCE(SUM(remaining_hours), 0) as total FROM students WHERE status = ?', ['active']);
+    stats.total_remaining = remaining[0].total;
 
     res.json(stats);
   } catch (err) {
@@ -297,9 +324,9 @@ router.get('/stats', authMiddleware, (req, res) => {
 });
 
 // 课时不足提醒（剩余 <= 1）
-router.get('/low-balance', authMiddleware, (req, res) => {
+router.get('/low-balance', authMiddleware, async (req, res) => {
   try {
-    const students = db.prepare(`
+    const students = await db.query(`
       SELECT s.*,
         t.name as teacher_name,
         ct.name as course_type_name
@@ -308,7 +335,7 @@ router.get('/low-balance', authMiddleware, (req, res) => {
       LEFT JOIN course_types ct ON ct.id = s.course_type_id
       WHERE s.remaining_hours <= 1 AND s.status = 'active'
       ORDER BY s.remaining_hours ASC
-    `).all();
+    `);
 
     res.json(students);
   } catch (err) {

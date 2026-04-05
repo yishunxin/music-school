@@ -7,7 +7,7 @@ const { authMiddleware, JWT_SECRET } = require('../middleware/auth');
 const router = express.Router();
 
 // 登录
-router.post('/login', (req, res) => {
+router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
 
@@ -15,7 +15,8 @@ router.post('/login', (req, res) => {
       return res.status(400).json({ error: '请输入用户名和密码' });
     }
 
-    const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+    const users = await db.query('SELECT * FROM users WHERE username = ?', [username]);
+    const user = users[0];
 
     if (!user || !bcrypt.compareSync(password, user.password)) {
       return res.status(401).json({ error: '用户名或密码错误' });
@@ -38,9 +39,10 @@ router.post('/login', (req, res) => {
 });
 
 // 获取当前用户
-router.get('/me', authMiddleware, (req, res) => {
+router.get('/me', authMiddleware, async (req, res) => {
   try {
-    const user = db.prepare('SELECT id, username, role FROM users WHERE id = ?').get(req.user.id);
+    const users = await db.query('SELECT id, username, role FROM users WHERE id = ?', [req.user.id]);
+    const user = users[0];
     if (!user) {
       return res.status(404).json({ error: '用户不存在' });
     }
@@ -51,7 +53,7 @@ router.get('/me', authMiddleware, (req, res) => {
 });
 
 // 修改密码
-router.post('/change-password', authMiddleware, (req, res) => {
+router.post('/change-password', authMiddleware, async (req, res) => {
   try {
     const { oldPassword, newPassword } = req.body;
 
@@ -59,14 +61,15 @@ router.post('/change-password', authMiddleware, (req, res) => {
       return res.status(400).json({ error: '请填写完整信息' });
     }
 
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+    const users = await db.query('SELECT * FROM users WHERE id = ?', [req.user.id]);
+    const user = users[0];
 
     if (!bcrypt.compareSync(oldPassword, user.password)) {
       return res.status(400).json({ error: '原密码错误' });
     }
 
     const hashedPassword = bcrypt.hashSync(newPassword, 10);
-    db.prepare('UPDATE users SET password = ? WHERE id = ?').run(hashedPassword, req.user.id);
+    await db.query('UPDATE users SET password = ? WHERE id = ?', [hashedPassword, req.user.id]);
 
     res.json({ message: '密码修改成功' });
   } catch (err) {
@@ -75,9 +78,9 @@ router.post('/change-password', authMiddleware, (req, res) => {
 });
 
 // 获取用户列表
-router.get('/users', authMiddleware, (req, res) => {
+router.get('/users', authMiddleware, async (req, res) => {
   try {
-    const users = db.prepare('SELECT id, username, role, created_at FROM users ORDER BY id').all();
+    const users = await db.query('SELECT id, username, role, created_at FROM users ORDER BY id');
     res.json(users);
   } catch (err) {
     res.status(500).json({ error: '服务器错误' });
@@ -85,7 +88,7 @@ router.get('/users', authMiddleware, (req, res) => {
 });
 
 // 创建用户
-router.post('/users', authMiddleware, (req, res) => {
+router.post('/users', authMiddleware, async (req, res) => {
   try {
     const { username, password, role } = req.body;
 
@@ -93,27 +96,28 @@ router.post('/users', authMiddleware, (req, res) => {
       return res.status(400).json({ error: '请填写完整信息' });
     }
 
-    const existing = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
-    if (existing) {
+    const existing = await db.query('SELECT * FROM users WHERE username = ?', [username]);
+    if (existing.length > 0) {
       return res.status(400).json({ error: '用户名已存在' });
     }
 
     const hashedPassword = bcrypt.hashSync(password, 10);
-    const result = db.prepare('INSERT INTO users (username, password, role) VALUES (?, ?, ?)').run(username, hashedPassword, role || 'admin');
+    const result = await db.query('INSERT INTO users (username, password, role) VALUES (?, ?, ?)', [username, hashedPassword, role || 'admin']);
 
-    res.json({ id: result.lastInsertRowid, username, role: role || 'admin' });
+    res.json({ id: result.insertId, username, role: role || 'admin' });
   } catch (err) {
     res.status(500).json({ error: '服务器错误' });
   }
 });
 
 // 更新用户
-router.put('/users/:id', authMiddleware, (req, res) => {
+router.put('/users/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
     const { username, password, role } = req.body;
 
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+    const users = await db.query('SELECT * FROM users WHERE id = ?', [id]);
+    const user = users[0];
     if (!user) {
       return res.status(404).json({ error: '用户不存在' });
     }
@@ -129,7 +133,7 @@ router.put('/users/:id', authMiddleware, (req, res) => {
     sql += ' WHERE id = ?';
     params.push(id);
 
-    db.prepare(sql).run(...params);
+    await db.query(sql, params);
     res.json({ message: '更新成功' });
   } catch (err) {
     res.status(500).json({ error: '服务器错误' });
@@ -137,7 +141,7 @@ router.put('/users/:id', authMiddleware, (req, res) => {
 });
 
 // 删除用户
-router.delete('/users/:id', authMiddleware, (req, res) => {
+router.delete('/users/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -145,7 +149,7 @@ router.delete('/users/:id', authMiddleware, (req, res) => {
       return res.status(400).json({ error: '不能删除当前登录账号' });
     }
 
-    db.prepare('DELETE FROM users WHERE id = ?').run(id);
+    await db.query('DELETE FROM users WHERE id = ?', [id]);
     res.json({ message: '删除成功' });
   } catch (err) {
     res.status(500).json({ error: '服务器错误' });

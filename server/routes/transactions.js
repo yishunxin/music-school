@@ -11,7 +11,7 @@ const categories = {
 };
 
 // 获取收支记录
-router.get('/', authMiddleware, (req, res) => {
+router.get('/', authMiddleware, async (req, res) => {
   try {
     const { type, category, start_date, end_date } = req.query;
 
@@ -40,7 +40,7 @@ router.get('/', authMiddleware, (req, res) => {
 
     sql += ' ORDER BY transaction_date DESC, created_at DESC';
 
-    const transactions = db.prepare(sql).all(...params);
+    const transactions = await db.query(sql, params);
     res.json(transactions);
   } catch (err) {
     res.status(500).json({ error: '服务器错误' });
@@ -53,7 +53,7 @@ router.get('/categories', authMiddleware, (req, res) => {
 });
 
 // 添加收支记录
-router.post('/', authMiddleware, (req, res) => {
+router.post('/', authMiddleware, async (req, res) => {
   try {
     const { type, amount, category, description, transaction_date } = req.body;
 
@@ -61,28 +61,29 @@ router.post('/', authMiddleware, (req, res) => {
       return res.status(400).json({ error: '请填写完整信息' });
     }
 
-    const result = db.prepare(`
+    const result = await db.query(`
       INSERT INTO transactions (type, amount, category, description, transaction_date)
       VALUES (?, ?, ?, ?, ?)
-    `).run(type, amount, category, description, transaction_date);
+    `, [type, amount, category, description, transaction_date]);
 
-    res.json({ id: result.lastInsertRowid, message: '添加成功' });
+    res.json({ id: result.insertId, message: '添加成功' });
   } catch (err) {
     res.status(500).json({ error: '服务器错误' });
   }
 });
 
 // 更新收支记录
-router.put('/:id', authMiddleware, (req, res) => {
+router.put('/:id', authMiddleware, async (req, res) => {
   try {
     const { type, amount, category, description, transaction_date } = req.body;
 
-    const transaction = db.prepare('SELECT * FROM transactions WHERE id = ?').get(req.params.id);
+    const transactions = await db.query('SELECT * FROM transactions WHERE id = ?', [req.params.id]);
+    const transaction = transactions[0];
     if (!transaction) {
       return res.status(404).json({ error: '记录不存在' });
     }
 
-    db.prepare(`
+    await db.query(`
       UPDATE transactions SET
         type = COALESCE(?, type),
         amount = COALESCE(?, amount),
@@ -90,7 +91,7 @@ router.put('/:id', authMiddleware, (req, res) => {
         description = COALESCE(?, description),
         transaction_date = COALESCE(?, transaction_date)
       WHERE id = ?
-    `).run(type, amount, category, description, transaction_date, req.params.id);
+    `, [type, amount, category, description, transaction_date, req.params.id]);
 
     res.json({ message: '更新成功' });
   } catch (err) {
@@ -99,15 +100,16 @@ router.put('/:id', authMiddleware, (req, res) => {
 });
 
 // 删除收支记录
-router.delete('/:id', authMiddleware, (req, res) => {
+router.delete('/:id', authMiddleware, async (req, res) => {
   try {
     // 检查是否有系统生成的关联记录（如课程签到产生的工资）
-    const transaction = db.prepare('SELECT * FROM transactions WHERE id = ?').get(req.params.id);
+    const transactions = await db.query('SELECT * FROM transactions WHERE id = ?', [req.params.id]);
+    const transaction = transactions[0];
     if (transaction && transaction.ref_type) {
       return res.status(400).json({ error: '系统生成的记录不能删除' });
     }
 
-    db.prepare('DELETE FROM transactions WHERE id = ?').run(req.params.id);
+    await db.query('DELETE FROM transactions WHERE id = ?', [req.params.id]);
     res.json({ message: '删除成功' });
   } catch (err) {
     res.status(500).json({ error: '服务器错误' });
@@ -115,7 +117,7 @@ router.delete('/:id', authMiddleware, (req, res) => {
 });
 
 // 收支统计
-router.get('/stats', authMiddleware, (req, res) => {
+router.get('/stats', authMiddleware, async (req, res) => {
   try {
     const { start_date, end_date } = req.query;
 
@@ -133,40 +135,42 @@ router.get('/stats', authMiddleware, (req, res) => {
     }
 
     // 总收入
-    const totalIncome = db.prepare(`
+    const totalIncomeResult = await db.query(`
       SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE type = 'income' ${dateFilter}
-    `).get(...params).total;
+    `, params);
+    const totalIncome = totalIncomeResult[0].total;
 
     // 总支出
-    const totalExpense = db.prepare(`
+    const totalExpenseResult = await db.query(`
       SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE type = 'expense' ${dateFilter}
-    `).get(...params).total;
+    `, params);
+    const totalExpense = totalExpenseResult[0].total;
 
     // 按类别统计收入
-    const incomeByCategory = db.prepare(`
+    const incomeByCategory = await db.query(`
       SELECT category, COALESCE(SUM(amount), 0) as total
       FROM transactions WHERE type = 'income' ${dateFilter}
       GROUP BY category
-    `).all(...params);
+    `, params);
 
     // 按类别统计支出
-    const expenseByCategory = db.prepare(`
+    const expenseByCategory = await db.query(`
       SELECT category, COALESCE(SUM(amount), 0) as total
       FROM transactions WHERE type = 'expense' ${dateFilter}
       GROUP BY category
-    `).all(...params);
+    `, params);
 
-    // 月度趋势（最近6个月）
-    const monthlyTrend = db.prepare(`
+    // 月度趋势（最近6个月）- MySQL 语法
+    const monthlyTrend = await db.query(`
       SELECT
-        strftime('%Y-%m', transaction_date) as month,
+        DATE_FORMAT(transaction_date, '%Y-%m') as month,
         SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income,
         SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expense
       FROM transactions
-      WHERE transaction_date >= date('now', '-6 months')
-      GROUP BY strftime('%Y-%m', transaction_date)
+      WHERE transaction_date >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+      GROUP BY DATE_FORMAT(transaction_date, '%Y-%m')
       ORDER BY month
-    `).all();
+    `);
 
     res.json({
       totalIncome,
@@ -177,12 +181,13 @@ router.get('/stats', authMiddleware, (req, res) => {
       monthlyTrend
     });
   } catch (err) {
+    console.error('Stats error:', err);
     res.status(500).json({ error: '服务器错误' });
   }
 });
 
 // 工资管理 - 获取月结记录
-router.get('/salary', authMiddleware, (req, res) => {
+router.get('/salary', authMiddleware, async (req, res) => {
   try {
     const { teacher_id, month, status } = req.query;
 
@@ -214,7 +219,7 @@ router.get('/salary', authMiddleware, (req, res) => {
 
     sql += ' ORDER BY ts.month DESC, ts.created_at DESC';
 
-    const salaries = db.prepare(sql).all(...params);
+    const salaries = await db.query(sql, params);
     res.json(salaries);
   } catch (err) {
     res.status(500).json({ error: '服务器错误' });
@@ -222,7 +227,7 @@ router.get('/salary', authMiddleware, (req, res) => {
 });
 
 // 工资管理 - 生成月结工资单
-router.post('/salary/generate', authMiddleware, (req, res) => {
+router.post('/salary/generate', authMiddleware, async (req, res) => {
   try {
     const { teacher_id, month } = req.body;
 
@@ -231,14 +236,14 @@ router.post('/salary/generate', authMiddleware, (req, res) => {
     }
 
     // 验证教师
-    const teacher = db.prepare('SELECT * FROM teachers WHERE id = ?').get(teacher_id);
-    if (!teacher) {
+    const teachers = await db.query('SELECT * FROM teachers WHERE id = ?', [teacher_id]);
+    if (!teachers[0]) {
       return res.status(400).json({ error: '教师不存在' });
     }
 
     // 检查该月份是否已生成
-    const existing = db.prepare('SELECT * FROM teacher_salary WHERE teacher_id = ? AND month = ?').get(teacher_id, month);
-    if (existing) {
+    const existing = await db.query('SELECT * FROM teacher_salary WHERE teacher_id = ? AND month = ?', [teacher_id, month]);
+    if (existing.length > 0) {
       return res.status(400).json({ error: '该月份工资单已存在' });
     }
 
@@ -246,7 +251,7 @@ router.post('/salary/generate', authMiddleware, (req, res) => {
     const startDate = `${month}-01`;
     const endDate = `${month}-31`;
 
-    const monthStats = db.prepare(`
+    const monthStatsResult = await db.query(`
       SELECT
         COALESCE(SUM(hours), 0) as total_hours,
         COALESCE(SUM(total_fee), 0) as total_fee,
@@ -255,26 +260,27 @@ router.post('/salary/generate', authMiddleware, (req, res) => {
       WHERE teacher_id = ?
         AND DATE(course_date) >= ?
         AND DATE(course_date) <= ?
-    `).get(teacher_id, startDate, endDate);
+    `, [teacher_id, startDate, endDate]);
+    const monthStats = monthStatsResult[0];
 
     if (monthStats.total_hours === 0) {
       return res.status(400).json({ error: '该月没有上课记录' });
     }
 
     // 创建工资单
-    const result = db.prepare(`
+    const result = await db.query(`
       INSERT INTO teacher_salary (teacher_id, month, total_hours, unit_price, total_fee)
       VALUES (?, ?, ?, ?, ?)
-    `).run(teacher_id, month, monthStats.total_hours, monthStats.avg_unit_fee, monthStats.total_fee);
+    `, [teacher_id, month, monthStats.total_hours, monthStats.avg_unit_fee, monthStats.total_fee]);
 
-    res.json({ id: result.lastInsertRowid, message: '工资单生成成功', total_fee: monthStats.total_fee });
+    res.json({ id: result.insertId, message: '工资单生成成功', total_fee: monthStats.total_fee });
   } catch (err) {
     res.status(500).json({ error: '服务器错误' });
   }
 });
 
 // 工资管理 - 确认发放
-router.post('/salary/pay', authMiddleware, (req, res) => {
+router.post('/salary/pay', authMiddleware, async (req, res) => {
   try {
     const { id } = req.body;
 
@@ -282,7 +288,8 @@ router.post('/salary/pay', authMiddleware, (req, res) => {
       return res.status(400).json({ error: '请选择工资单' });
     }
 
-    const salary = db.prepare('SELECT * FROM teacher_salary WHERE id = ?').get(id);
+    const salaries = await db.query('SELECT * FROM teacher_salary WHERE id = ?', [id]);
+    const salary = salaries[0];
     if (!salary) {
       return res.status(404).json({ error: '工资单不存在' });
     }
@@ -292,8 +299,7 @@ router.post('/salary/pay', authMiddleware, (req, res) => {
     }
 
     // 更新状态
-    db.prepare('UPDATE teacher_salary SET status = ?, paid_at = ? WHERE id = ?')
-      .run('paid', new Date().toISOString(), id);
+    await db.query('UPDATE teacher_salary SET status = ?, paid_at = ? WHERE id = ?', ['paid', new Date().toISOString(), id]);
 
     res.json({ message: '发放成功' });
   } catch (err) {
@@ -302,13 +308,13 @@ router.post('/salary/pay', authMiddleware, (req, res) => {
 });
 
 // 获取教师课时明细（用于月结核对）
-router.get('/teacher-month/:teacher_id/:month', authMiddleware, (req, res) => {
+router.get('/teacher-month/:teacher_id/:month', authMiddleware, async (req, res) => {
   try {
     const { teacher_id, month } = req.params;
     const startDate = `${month}-01`;
     const endDate = `${month}-31`;
 
-    const logs = db.prepare(`
+    const logs = await db.query(`
       SELECT cl.*,
         s.name as student_name,
         ct.name as course_type_name
@@ -319,9 +325,9 @@ router.get('/teacher-month/:teacher_id/:month', authMiddleware, (req, res) => {
         AND DATE(cl.course_date) >= ?
         AND DATE(cl.course_date) <= ?
       ORDER BY cl.course_date
-    `).all(teacher_id, startDate, endDate);
+    `, [teacher_id, startDate, endDate]);
 
-    const summary = db.prepare(`
+    const summaryResult = await db.query(`
       SELECT
         COUNT(*) as total_sessions,
         COALESCE(SUM(hours), 0) as total_hours,
@@ -330,9 +336,9 @@ router.get('/teacher-month/:teacher_id/:month', authMiddleware, (req, res) => {
       WHERE teacher_id = ?
         AND DATE(course_date) >= ?
         AND DATE(course_date) <= ?
-    `).get(teacher_id, startDate, endDate);
+    `, [teacher_id, startDate, endDate]);
 
-    res.json({ logs, summary });
+    res.json({ logs, summary: summaryResult[0] });
   } catch (err) {
     res.status(500).json({ error: '服务器错误' });
   }
