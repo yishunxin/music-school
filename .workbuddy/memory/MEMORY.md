@@ -31,10 +31,16 @@
 
 ### 云服务器部署
 - 服务器IP: 47.122.126.137
+- SSH连接: `ssh music-server` (已配置 ~/.ssh/config)
 - SSH密钥: ~/Downloads/keyPairForMac.pem
 - 数据库: music_school / MusicSchool@2026
 - 已安装: Node.js 20, PM2, MariaDB 10.5, Caddy
 - 服务状态: 运行中
+
+### 问题修复记录
+- **2026-04-05**: 修复前端API地址硬编码为localhost导致微信内无法登录的问题
+  - 修改 `client/src/api/index.js`: `http://localhost:3001/api` → `/api` (相对路径)
+  - 重新构建部署到服务器
 
 ### 数据库表
 - users (管理员账号)
