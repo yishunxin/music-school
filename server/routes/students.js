@@ -8,40 +8,31 @@ const router = express.Router();
 // 获取学生列表
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    const { search, teacher_id, status } = req.query;
+    const { search, status } = req.query;
 
-    let sql = `
-      SELECT s.*,
-        t.name as teacher_name,
-        ct.name as course_type_name,
-        ct.subject,
-        ct.level
-      FROM students s
-      LEFT JOIN teachers t ON t.id = s.teacher_id
-      LEFT JOIN course_types ct ON ct.id = s.course_type_id
-      WHERE 1=1
-    `;
-
+    let sql = `SELECT * FROM students WHERE 1=1`;
     const params = [];
 
     if (search) {
-      sql += ' AND (s.name LIKE ? OR s.phone LIKE ? OR s.guardian_name LIKE ?)';
+      sql += ' AND (name LIKE ? OR phone LIKE ? OR guardian_name LIKE ?)';
       params.push(`%${search}%`, `%${search}%`, `%${search}%`);
     }
 
-    if (teacher_id) {
-      sql += ' AND s.teacher_id = ?';
-      params.push(teacher_id);
-    }
-
     if (status) {
-      sql += ' AND s.status = ?';
+      sql += ' AND status = ?';
       params.push(status);
     }
 
-    sql += ' ORDER BY s.created_at DESC';
+    sql += ' ORDER BY created_at DESC';
 
     const students = await db.query(sql, params);
+
+    // 获取每个学生的课程汇总信息（剩余课时 > 0 的课程）
+    for (let student of students) {
+      const coursesInfo = await getStudentCoursesInfo(student.id);
+      student.courses_summary = coursesInfo;
+    }
+
     res.json(students);
   } catch (err) {
     console.error('Get students error:', err);
@@ -49,20 +40,52 @@ router.get('/', authMiddleware, async (req, res) => {
   }
 });
 
+// 获取学生各课程剩余课时（内部函数）
+async function getStudentCoursesInfo(studentId) {
+  try {
+    const sql = `
+      SELECT
+        r.course_type_id,
+        ct.name as course_type_name,
+        r.teacher_id,
+        t.name as teacher_name,
+        r.total_hours - COALESCE(cl.consumed, 0) as remaining_hours,
+        r.min_recharge_date as first_recharge_date
+      FROM (
+        SELECT
+          course_type_id,
+          teacher_id,
+          SUM(total_hours) as total_hours,
+          MIN(recharge_date) as min_recharge_date
+        FROM recharges
+        WHERE student_id = ?
+        GROUP BY course_type_id, teacher_id
+      ) r
+      LEFT JOIN course_types ct ON ct.id = r.course_type_id
+      LEFT JOIN teachers t ON t.id = r.teacher_id
+      LEFT JOIN (
+        SELECT course_type_id, SUM(hours) as consumed
+        FROM course_logs
+        WHERE student_id = ?
+        GROUP BY course_type_id
+      ) cl ON cl.course_type_id = r.course_type_id
+      WHERE r.total_hours - COALESCE(cl.consumed, 0) > 0
+      ORDER BY r.min_recharge_date ASC
+    `;
+
+    const courses = await db.query(sql, [studentId, studentId]);
+    return courses;
+  } catch (err) {
+    console.error('Get student courses info error:', err);
+    return [];
+  }
+}
+
 // 获取单个学生
 router.get('/:id', authMiddleware, async (req, res) => {
   try {
     const students = await db.query(`
-      SELECT s.*,
-        t.name as teacher_name,
-        ct.name as course_type_name,
-        ct.subject,
-        ct.level,
-        ct.price as unit_price
-      FROM students s
-      LEFT JOIN teachers t ON t.id = s.teacher_id
-      LEFT JOIN course_types ct ON ct.id = s.course_type_id
-      WHERE s.id = ?
+      SELECT * FROM students WHERE id = ?
     `, [req.params.id]);
     const student = students[0];
 
@@ -72,9 +95,10 @@ router.get('/:id', authMiddleware, async (req, res) => {
 
     // 获取该学生的充值记录
     const recharges = await db.query(`
-      SELECT r.*, ct.name as course_type_name
+      SELECT r.*, ct.name as course_type_name, t.name as teacher_name
       FROM recharges r
       LEFT JOIN course_types ct ON ct.id = r.course_type_id
+      LEFT JOIN teachers t ON t.id = r.teacher_id
       WHERE r.student_id = ?
       ORDER BY r.recharge_date DESC
     `, [req.params.id]);
@@ -89,40 +113,50 @@ router.get('/:id', authMiddleware, async (req, res) => {
       ORDER BY cl.course_date DESC
     `, [req.params.id]);
 
-    res.json({ ...student, recharges, courseLogs });
+    // 获取课程汇总
+    const coursesInfo = await getStudentCoursesInfo(req.params.id);
+
+    res.json({ ...student, recharges, courseLogs, courses: coursesInfo });
   } catch (err) {
     console.error('Get student error:', err);
     res.status(500).json({ error: '获取学生详情失败：' + (err.message || '未知错误') });
   }
 });
 
+// 获取学生的课程列表（剩余课时 > 0）
+router.get('/:id/courses', authMiddleware, async (req, res) => {
+  try {
+    const students = await db.query('SELECT * FROM students WHERE id = ?', [req.params.id]);
+    if (!students[0]) {
+      return res.status(404).json({ error: '学生不存在' });
+    }
+
+    const courses = await getStudentCoursesInfo(req.params.id);
+
+    res.json({
+      student_id: parseInt(req.params.id),
+      student_name: students[0].name,
+      courses
+    });
+  } catch (err) {
+    console.error('Get student courses error:', err);
+    res.status(500).json({ error: '获取学生课程失败：' + (err.message || '未知错误') });
+  }
+});
+
 // 创建学生
 router.post('/', authMiddleware, async (req, res) => {
   try {
-    const { name, gender, age, phone, guardian_name, guardian_phone, teacher_id, course_type_id, memo } = req.body;
+    const { name, gender, age, phone, guardian_name, guardian_phone, memo } = req.body;
 
-    if (!name || !teacher_id || !course_type_id) {
-      return res.status(400).json({ error: '请填写完整信息（姓名、授课老师、课程类型必填）' });
-    }
-
-    // 验证教师存在
-    const teachers = await db.query('SELECT * FROM teachers WHERE id = ? AND status = ?', [teacher_id, 'active']);
-    const teacher = teachers[0];
-    if (!teacher) {
-      return res.status(400).json({ error: '教师不存在或已停用' });
-    }
-
-    // 验证课程类型存在
-    const courseTypes = await db.query('SELECT * FROM course_types WHERE id = ? AND status = ?', [course_type_id, 'active']);
-    const courseType = courseTypes[0];
-    if (!courseType) {
-      return res.status(400).json({ error: '课程类型不存在或已停用' });
+    if (!name) {
+      return res.status(400).json({ error: '请填写学生姓名' });
     }
 
     const result = await db.query(`
-      INSERT INTO students (name, gender, age, phone, guardian_name, guardian_phone, teacher_id, course_type_id, memo)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [name, gender, age, phone, guardian_name, guardian_phone, teacher_id, course_type_id, memo]);
+      INSERT INTO students (name, gender, age, phone, guardian_name, guardian_phone, memo)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `, [name, gender, age, phone, guardian_name, guardian_phone, memo]);
 
     res.json({ id: result.insertId, message: '创建成功' });
   } catch (err) {
@@ -134,27 +168,12 @@ router.post('/', authMiddleware, async (req, res) => {
 // 更新学生
 router.put('/:id', authMiddleware, async (req, res) => {
   try {
-    const { name, gender, age, phone, guardian_name, guardian_phone, teacher_id, course_type_id, memo, status } = req.body;
+    const { name, gender, age, phone, guardian_name, guardian_phone, memo, status } = req.body;
 
     const students = await db.query('SELECT * FROM students WHERE id = ?', [req.params.id]);
     const student = students[0];
     if (!student) {
       return res.status(404).json({ error: '学生不存在' });
-    }
-
-    // 如果更换了教师或课程类型，验证新值
-    if (teacher_id) {
-      const teachers = await db.query('SELECT * FROM teachers WHERE id = ? AND status = ?', [teacher_id, 'active']);
-      if (!teachers[0]) {
-        return res.status(400).json({ error: '教师不存在或已停用' });
-      }
-    }
-
-    if (course_type_id) {
-      const courseTypes = await db.query('SELECT * FROM course_types WHERE id = ? AND status = ?', [course_type_id, 'active']);
-      if (!courseTypes[0]) {
-        return res.status(400).json({ error: '课程类型不存在或已停用' });
-      }
     }
 
     await db.query(`
@@ -165,12 +184,10 @@ router.put('/:id', authMiddleware, async (req, res) => {
         phone = COALESCE(?, phone),
         guardian_name = COALESCE(?, guardian_name),
         guardian_phone = COALESCE(?, guardian_phone),
-        teacher_id = COALESCE(?, teacher_id),
-        course_type_id = COALESCE(?, course_type_id),
         memo = COALESCE(?, memo),
         status = COALESCE(?, status)
       WHERE id = ?
-    `, [name, gender, age, phone, guardian_name, guardian_phone, teacher_id, course_type_id, memo, status, req.params.id]);
+    `, [name, gender, age, phone, guardian_name, guardian_phone, memo, status, req.params.id]);
 
     res.json({ message: '更新成功' });
   } catch (err) {
@@ -206,22 +223,6 @@ router.delete('/:id', authMiddleware, async (req, res) => {
   } catch (err) {
     console.error('Delete student error:', err);
     res.status(500).json({ error: '删除学生失败：' + (err.message || '未知错误') });
-  }
-});
-
-module.exports = router;
-router.delete('/:id', authMiddleware, async (req, res) => {
-  try {
-    // 检查是否有充值记录
-    const rechargeCount = await db.query('SELECT COUNT(*) as count FROM recharges WHERE student_id = ?', [req.params.id]);
-    if (rechargeCount[0].count > 0) {
-      return res.status(400).json({ error: '该学生有充值记录，无法删除' });
-    }
-
-    await db.query('DELETE FROM students WHERE id = ?', [req.params.id]);
-    res.json({ message: '删除成功' });
-  } catch (err) {
-    res.status(500).json({ error: '服务器错误' });
   }
 });
 

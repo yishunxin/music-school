@@ -66,14 +66,14 @@ export default function Dashboard() {
 
           {lowBalanceStudents.length > 0 ? (
             <div className="space-y-3">
-              {lowBalanceStudents.map((student) => (
-                <div key={student.id} className="flex justify-between items-center p-3 bg-red-50 rounded-lg">
+              {lowBalanceStudents.map((item) => (
+                <div key={`${item.student_id}-${item.course_type_id}`} className="flex justify-between items-center p-3 bg-red-50 rounded-lg">
                   <div>
-                    <p className="font-medium text-gray-800">{student.name}</p>
-                    <p className="text-sm text-gray-500">{student.teacher_name} · {student.course_type_name}</p>
+                    <p className="font-medium text-gray-800">{item.student_name}</p>
+                    <p className="text-sm text-gray-500">{item.course_type_name}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-lg font-bold text-red-600">{student.remaining_hours}</p>
+                    <p className="text-lg font-bold text-red-600">{item.remaining_hours}</p>
                     <p className="text-xs text-gray-500">剩余课时</p>
                   </div>
                 </div>

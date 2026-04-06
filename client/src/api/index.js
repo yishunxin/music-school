@@ -57,6 +57,7 @@ export const deleteCourseType = (id) => api.delete(`/course-types/${id}`);
 // Student APIs
 export const getStudents = (params) => api.get('/students', { params });
 export const getStudent = (id) => api.get(`/students/${id}`);
+export const getStudentCourses = (id) => api.get(`/students/${id}/courses`);
 export const createStudent = (data) => api.post('/students', data);
 export const updateStudent = (id, data) => api.put(`/students/${id}`, data);
 export const deleteStudent = (id, password) => api.delete(`/students/${id}`, { data: { password } });

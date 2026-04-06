@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getStudents, getTeachers, getCourseTypes, recharge, getRecharges, signIn, getCourseLogs, deleteCourseLog, getCourseStats } from '../api';
+import { getStudents, getTeachers, getCourseTypes, recharge, getRecharges, signIn, getCourseLogs, deleteCourseLog, getCourseStats, getStudentCourses } from '../api';
 
 export default function Courses() {
   const [activeTab, setActiveTab] = useState('stats');
@@ -20,12 +20,12 @@ export default function Courses() {
 
   // 签到表单
   const [signInForm, setSignInForm] = useState({
-    student_id: '', hours: 1, course_date: new Date().toISOString().slice(0, 16), memo: ''
+    student_id: '', course_type_id: '', hours: 1, course_date: new Date().toISOString().slice(0, 16), memo: ''
   });
   const [courseLogs, setCourseLogs] = useState([]);
   const [signInError, setSignInError] = useState('');
   const [signInSuccess, setSignInSuccess] = useState('');
-  const [selectedStudent, setSelectedStudent] = useState(null);
+  const [selectedStudentCourses, setSelectedStudentCourses] = useState([]); // 选中学生的课程列表
 
   const fetchData = async () => {
     try {
@@ -69,26 +69,32 @@ export default function Courses() {
     if (activeTab === 'signin') loadRecords();
   }, [activeTab]);
 
-  // 处理学生选择变化
-  const handleStudentChange = (studentId) => {
-    const student = students.find(s => s.id === parseInt(studentId));
-    setSelectedStudent(student || null);
+  // 处理学生选择变化 - 签到
+  const handleSignInStudentChange = async (studentId) => {
+    setSignInForm(prev => ({
+      ...prev,
+      student_id: studentId,
+      course_type_id: '' // 清空课程类型选择
+    }));
+    setSelectedStudentCourses([]);
 
-    if (student) {
-      // 自动关联老师和课程类型
-      setSignInForm(prev => ({
-        ...prev,
-        student_id: studentId,
-        course_type_id: student.course_type_id,
-        teacher_id: student.teacher_id
-      }));
-    } else {
-      setSignInForm(prev => ({
-        ...prev,
-        student_id: studentId,
-        course_type_id: '',
-        teacher_id: ''
-      }));
+    if (studentId) {
+      try {
+        const coursesRes = await getStudentCourses(studentId);
+        const courses = coursesRes.data.courses || [];
+        setSelectedStudentCourses(courses);
+
+        // 默认选中充值最早的课程
+        if (courses.length > 0) {
+          const earliestCourse = courses[0];
+          setSignInForm(prev => ({
+            ...prev,
+            course_type_id: earliestCourse.course_type_id.toString()
+          }));
+        }
+      } catch (err) {
+        console.error('获取学生课程失败:', err);
+      }
     }
   };
 
@@ -118,13 +124,20 @@ export default function Courses() {
     setSignInError('');
     setSignInSuccess('');
 
+    if (!signInForm.course_type_id) {
+      setSignInError('请选择课程类型');
+      return;
+    }
+
     try {
       const result = await signIn(signInForm);
-      setSignInSuccess(`签到成功！剩余课时: ${result.data.remaining_hours}`);
+      const selectedCourse = selectedStudentCourses.find(c => c.course_type_id.toString() === signInForm.course_type_id);
+      const courseName = selectedCourse ? selectedCourse.course_type_name : '';
+      setSignInSuccess(`签到成功！${courseName} 剩余课时: ${result.data.remaining_hours}`);
       setSignInForm({
-        student_id: '', hours: 1, course_date: new Date().toISOString().slice(0, 16), memo: ''
+        student_id: '', course_type_id: '', hours: 1, course_date: new Date().toISOString().slice(0, 16), memo: ''
       });
-      setSelectedStudent(null);
+      setSelectedStudentCourses([]);
       fetchData();
       loadRecords();
     } catch (err) {
@@ -213,35 +226,25 @@ export default function Courses() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">学生 *</label>
                 <select
                   value={rechargeForm.student_id}
-                  onChange={(e) => {
-                    setRechargeForm({ ...rechargeForm, student_id: e.target.value });
-                    const student = students.find(s => s.id === parseInt(e.target.value));
-                    if (student) {
-                      setRechargeForm(prev => ({
-                        ...prev,
-                        student_id: e.target.value,
-                        course_type_id: student.course_type_id,
-                        teacher_id: student.teacher_id
-                      }));
-                    }
-                  }}
+                  onChange={(e) => setRechargeForm({ ...rechargeForm, student_id: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                   required
                 >
                   <option value="">请选择学生</option>
                   {students.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name} (剩余{s.remaining_hours}课时)</option>
+                    <option key={s.id} value={s.id}>{s.name}</option>
                   ))}
                 </select>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">课程类型</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">课程类型 *</label>
                   <select
                     value={rechargeForm.course_type_id}
                     onChange={(e) => setRechargeForm({ ...rechargeForm, course_type_id: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    required
                   >
                     <option value="">请选择</option>
                     {courseTypes.map((ct) => (
@@ -250,11 +253,12 @@ export default function Courses() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">授课老师</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">授课老师 *</label>
                   <select
                     value={rechargeForm.teacher_id}
                     onChange={(e) => setRechargeForm({ ...rechargeForm, teacher_id: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    required
                   >
                     <option value="">请选择</option>
                     {teachers.map((t) => (
@@ -347,9 +351,9 @@ export default function Courses() {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-3 py-2 text-left">学生</th>
+                    <th className="px-3 py-2 text-left">课程</th>
                     <th className="px-3 py-2 text-left">课时</th>
                     <th className="px-3 py-2 text-left">课程费</th>
-                    <th className="px-3 py-2 text-left">练琴费</th>
                     <th className="px-3 py-2 text-left">日期</th>
                   </tr>
                 </thead>
@@ -357,9 +361,9 @@ export default function Courses() {
                   {rechargeList.slice(0, 20).map((r) => (
                     <tr key={r.id}>
                       <td className="px-3 py-2">{r.student_name}</td>
+                      <td className="px-3 py-2">{r.course_type_name}</td>
                       <td className="px-3 py-2">+{r.total_hours}</td>
                       <td className="px-3 py-2 text-green-600">¥{r.total_fee}</td>
-                      <td className="px-3 py-2 text-blue-600">{r.practice_fee > 0 ? '¥' + r.practice_fee : '-'}</td>
                       <td className="px-3 py-2">{r.recharge_date}</td>
                     </tr>
                   ))}
@@ -384,25 +388,62 @@ export default function Courses() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">学生 *</label>
                 <select
                   value={signInForm.student_id}
-                  onChange={(e) => handleStudentChange(e.target.value)}
+                  onChange={(e) => handleSignInStudentChange(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                   required
                 >
                   <option value="">请选择学生</option>
-                  {students.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} (剩余{s.remaining_hours}课时)
-                      {s.remaining_hours <= 1 && <span className="text-red-500"> ⚠️</span>}
+                  {students.map((s) => {
+                    const courses = s.courses_summary || [];
+                    const coursesDisplay = courses.length > 0
+                      ? courses.map(c => `${c.course_type_name}剩${c.remaining_hours}课时`).join(' / ')
+                      : '暂无课时';
+                    return (
+                      <option key={s.id} value={s.id}>
+                        {s.name} ({coursesDisplay})
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              {/* 课程类型选择 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">课程类型 *</label>
+                <select
+                  value={signInForm.course_type_id}
+                  onChange={(e) => setSignInForm({ ...signInForm, course_type_id: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  required
+                >
+                  <option value="">请选择</option>
+                  {selectedStudentCourses.map((course) => (
+                    <option key={course.course_type_id} value={course.course_type_id}>
+                      {course.course_type_name} - {course.teacher_name} (剩余{course.remaining_hours}课时)
+                      {course.remaining_hours <= 1 && ' ⚠️'}
                     </option>
                   ))}
                 </select>
               </div>
 
-              {selectedStudent && (
+              {signInForm.course_type_id && (
                 <div className="bg-gray-50 p-3 rounded-lg text-sm space-y-1">
-                  <p>授课老师: {teachers.find(t => t.id === selectedStudent.teacher_id)?.name || '-'}</p>
-                  <p>课程类型: {courseTypes.find(ct => ct.id === selectedStudent.course_type_id)?.name || '-'}</p>
-                  <p className="font-medium">剩余课时: <span className={selectedStudent.remaining_hours <= 1 ? 'text-red-600' : 'text-green-600'}>{selectedStudent.remaining_hours}</span></p>
+                  <p className="text-gray-600">
+                    课程：{selectedStudentCourses.find(c => c.course_type_id.toString() === signInForm.course_type_id)?.course_type_name || '-'}
+                  </p>
+                  <p className="text-gray-600">
+                    授课老师：{selectedStudentCourses.find(c => c.course_type_id.toString() === signInForm.course_type_id)?.teacher_name || '-'}
+                  </p>
+                  <p className="font-medium">
+                    剩余课时：
+                    <span className={
+                      (selectedStudentCourses.find(c => c.course_type_id.toString() === signInForm.course_type_id)?.remaining_hours || 0) <= 1
+                        ? 'text-red-600'
+                        : 'text-green-600'
+                    }>
+                      {selectedStudentCourses.find(c => c.course_type_id.toString() === signInForm.course_type_id)?.remaining_hours || 0}
+                    </span>
+                  </p>
                 </div>
               )}
 
@@ -456,8 +497,8 @@ export default function Courses() {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-3 py-2 text-left">学生</th>
+                    <th className="px-3 py-2 text-left">课程</th>
                     <th className="px-3 py-2 text-left">课时</th>
-                    <th className="px-3 py-2 text-left">教师</th>
                     <th className="px-3 py-2 text-left">时间</th>
                     <th className="px-3 py-2 text-left">操作</th>
                   </tr>
@@ -466,8 +507,8 @@ export default function Courses() {
                   {courseLogs.slice(0, 20).map((log) => (
                     <tr key={log.id}>
                       <td className="px-3 py-2">{log.student_name}</td>
+                      <td className="px-3 py-2">{log.course_type_name}</td>
                       <td className="px-3 py-2">-{log.hours}</td>
-                      <td className="px-3 py-2">{log.teacher_name}</td>
                       <td className="px-3 py-2">{new Date(log.course_date).toLocaleString()}</td>
                       <td className="px-3 py-2">
                         <button
@@ -502,6 +543,7 @@ export default function Courses() {
                   <th className="px-3 py-2 text-left">ID</th>
                   <th className="px-3 py-2 text-left">学生</th>
                   <th className="px-3 py-2 text-left">课程类型</th>
+                  <th className="px-3 py-2 text-left">授课老师</th>
                   <th className="px-3 py-2 text-left">购买课时</th>
                   <th className="px-3 py-2 text-left">赠送课时</th>
                   <th className="px-3 py-2 text-left">课程费</th>
@@ -515,6 +557,7 @@ export default function Courses() {
                     <td className="px-3 py-2">{r.id}</td>
                     <td className="px-3 py-2">{r.student_name}</td>
                     <td className="px-3 py-2">{r.course_type_name}</td>
+                    <td className="px-3 py-2">{r.teacher_name}</td>
                     <td className="px-3 py-2">{r.buy_hours}</td>
                     <td className="px-3 py-2">{r.gift_hours}</td>
                     <td className="px-3 py-2 text-green-600">¥{r.total_fee}</td>

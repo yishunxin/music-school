@@ -51,10 +51,7 @@ router.post('/recharge', authMiddleware, async (req, res) => {
 
     const recharge_id = rechargeResult.insertId;
 
-    // 2. 更新学生剩余课时
-    await connection.query('UPDATE students SET remaining_hours = remaining_hours + ? WHERE id = ?', [total_hours, student_id]);
-
-    // 3. 创建收入记录 - 课程费
+    // 2. 创建收入记录 - 课程费
     if (course_fee > 0) {
       await connection.query(`
         INSERT INTO transactions (type, amount, category, ref_id, ref_type, description, transaction_date)
@@ -62,7 +59,7 @@ router.post('/recharge', authMiddleware, async (req, res) => {
       `, ['income', course_fee, '课时收入', recharge_id, 'recharge', `学生${student.name}充值${total_hours}课时`, recharge_date || new Date().toISOString().split('T')[0]]);
     }
 
-    // 4. 创建收入记录 - 练琴费（独立分类）
+    // 3. 创建收入记录 - 练琴费（独立分类）
     if (practiceFee > 0) {
       await connection.query(`
         INSERT INTO transactions (type, amount, category, ref_id, ref_type, description, transaction_date)
@@ -129,39 +126,68 @@ router.get('/recharges', authMiddleware, async (req, res) => {
 router.post('/signin', authMiddleware, async (req, res) => {
   let connection;
   try {
-    const { student_id, hours, course_date, memo } = req.body;
+    const { student_id, course_type_id, hours, course_date, memo } = req.body;
 
     if (!student_id) {
       return res.status(400).json({ error: '请选择学生' });
     }
 
+    if (!course_type_id) {
+      return res.status(400).json({ error: '请选择课程类型' });
+    }
+
     // 验证学生存在
-    const students = await db.query(`
-      SELECT s.*, ct.price as unit_price
-      FROM students s
-      LEFT JOIN course_types ct ON ct.id = s.course_type_id
-      WHERE s.id = ? AND s.status = ?
-    `, [student_id, 'active']);
+    const students = await db.query('SELECT * FROM students WHERE id = ? AND status = ?', [student_id, 'active']);
     const student = students[0];
 
     if (!student) {
       return res.status(400).json({ error: '学生不存在' });
     }
 
-    const consumeHours = parseFloat(hours) || 1;
-
-    // 检查剩余课时是否足够
-    if (student.remaining_hours < consumeHours) {
-      return res.status(400).json({ error: `剩余课时不足，当前剩余${student.remaining_hours}课时` });
+    // 验证课程类型存在
+    const courseTypes = await db.query('SELECT * FROM course_types WHERE id = ? AND status = ?', [course_type_id, 'active']);
+    if (!courseTypes[0]) {
+      return res.status(400).json({ error: '课程类型不存在' });
     }
 
-    // 获取该学生最近一次充值记录，用于计算教师费用
+    const consumeHours = parseFloat(hours) || 1;
+
+    // 计算该学生该课程类型的剩余课时
+    const courseHours = await db.query(`
+      SELECT
+        COALESCE(r.total_hours, 0) - COALESCE(cl.consumed, 0) as remaining_hours,
+        r.teacher_id
+      FROM (
+        SELECT
+          course_type_id,
+          teacher_id,
+          SUM(total_hours) as total_hours
+        FROM recharges
+        WHERE student_id = ? AND course_type_id = ?
+        GROUP BY course_type_id, teacher_id
+      ) r
+      LEFT JOIN (
+        SELECT course_type_id, SUM(hours) as consumed
+        FROM course_logs
+        WHERE student_id = ? AND course_type_id = ?
+        GROUP BY course_type_id
+      ) cl ON cl.course_type_id = r.course_type_id
+    `, [student_id, course_type_id, student_id, course_type_id]);
+
+    const remainingHours = courseHours[0]?.remaining_hours || 0;
+    const teacherId = courseHours[0]?.teacher_id;
+
+    if (remainingHours < consumeHours) {
+      return res.status(400).json({ error: `该课程剩余课时不足，当前剩余${remainingHours}课时` });
+    }
+
+    // 获取该学生该课程最近一次充值记录，用于计算教师费用
     const lastRecharges = await db.query(`
       SELECT * FROM recharges
-      WHERE student_id = ? AND buy_hours > 0
+      WHERE student_id = ? AND course_type_id = ? AND buy_hours > 0
       ORDER BY recharge_date DESC, id DESC
       LIMIT 1
-    `, [student_id]);
+    `, [student_id, course_type_id]);
     const lastRecharge = lastRecharges[0];
 
     const unit_fee = lastRecharge ? lastRecharge.unit_point_fee : 0;
@@ -176,8 +202,8 @@ router.post('/signin', authMiddleware, async (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       student_id,
-      student.teacher_id,
-      student.course_type_id,
+      teacherId,
+      course_type_id,
       consumeHours,
       unit_fee,
       total_fee,
@@ -188,21 +214,18 @@ router.post('/signin', authMiddleware, async (req, res) => {
 
     const log_id = logResult.insertId;
 
-    // 2. 扣减学生剩余课时
-    await connection.query('UPDATE students SET remaining_hours = remaining_hours - ? WHERE id = ?', [consumeHours, student_id]);
-
-    // 3. 创建支出记录（教师工资）
+    // 2. 创建支出记录（教师工资）
     if (total_fee > 0) {
       const courseDateStr = course_date ? new Date(course_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
       await connection.query(`
         INSERT INTO transactions (type, amount, category, ref_id, ref_type, description, transaction_date)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-      `, ['expense', total_fee, '教师工资', log_id, 'course', `学生${student.name}上课，教师${student.teacher_id}`, courseDateStr]);
+      `, ['expense', total_fee, '教师工资', log_id, 'course', `学生${student.name}上课`, courseDateStr]);
     }
 
     await connection.commit();
 
-    res.json({ id: log_id, message: '签到成功', remaining_hours: student.remaining_hours - consumeHours });
+    res.json({ id: log_id, message: '签到成功', remaining_hours: remainingHours - consumeHours });
   } catch (err) {
     if (connection) await connection.rollback();
     console.error('Signin error:', err);
@@ -278,13 +301,10 @@ router.delete('/logs/:id', authMiddleware, async (req, res) => {
     connection = await db.getConnection();
     await connection.beginTransaction();
 
-    // 1. 恢复学生课时
-    await connection.query('UPDATE students SET remaining_hours = remaining_hours + ? WHERE id = ?', [log.hours, log.student_id]);
-
-    // 2. 删除关联的收入支出记录
+    // 1. 删除关联的收入支出记录
     await connection.query('DELETE FROM transactions WHERE ref_id = ? AND ref_type = ?', [log.id, 'course']);
 
-    // 3. 删除上课记录
+    // 2. 删除上课记录
     await connection.query('DELETE FROM course_logs WHERE id = ?', [log.id]);
 
     await connection.commit();
@@ -325,8 +345,8 @@ router.get('/stats', authMiddleware, async (req, res) => {
     const hoursConsumed = await db.query('SELECT COALESCE(SUM(hours), 0) as total FROM course_logs');
     stats.total_hours_consumed = hoursConsumed[0].total;
 
-    const remaining = await db.query('SELECT COALESCE(SUM(remaining_hours), 0) as total FROM students WHERE status = ?', ['active']);
-    stats.total_remaining = remaining[0].total;
+    // 总剩余课时 = 总售出 - 总消耗
+    stats.total_remaining = stats.total_hours_sold - stats.total_hours_consumed;
 
     res.json(stats);
   } catch (err) {
@@ -337,17 +357,32 @@ router.get('/stats', authMiddleware, async (req, res) => {
 // 课时不足提醒（剩余 <= 1）
 router.get('/low-balance', authMiddleware, async (req, res) => {
   try {
-    const students = await db.query(`
-      SELECT s.*,
-        t.name as teacher_name,
-        ct.name as course_type_name
+    // 查询所有剩余课时 <= 1 的学生课程组合
+    const sql = `
+      SELECT
+        s.id as student_id,
+        s.name as student_name,
+        r.course_type_id,
+        ct.name as course_type_name,
+        r.total_hours - COALESCE(cl.consumed, 0) as remaining_hours
       FROM students s
-      LEFT JOIN teachers t ON t.id = s.teacher_id
-      LEFT JOIN course_types ct ON ct.id = s.course_type_id
-      WHERE s.remaining_hours <= 1 AND s.status = 'active'
-      ORDER BY s.remaining_hours ASC
-    `);
+      CROSS JOIN (
+        SELECT course_type_id, teacher_id, SUM(total_hours) as total_hours
+        FROM recharges
+        GROUP BY course_type_id, teacher_id
+      ) r
+      LEFT JOIN course_types ct ON ct.id = r.course_type_id
+      LEFT JOIN (
+        SELECT course_type_id, SUM(hours) as consumed
+        FROM course_logs
+        GROUP BY course_type_id
+      ) cl ON cl.course_type_id = r.course_type_id
+      WHERE r.total_hours - COALESCE(cl.consumed, 0) <= 1
+      AND s.status = 'active'
+      ORDER BY remaining_hours ASC
+    `;
 
+    const students = await db.query(sql);
     res.json(students);
   } catch (err) {
     res.status(500).json({ error: '获取课时不足提醒失败：' + (err.message || '未知错误') });

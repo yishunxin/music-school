@@ -1,18 +1,15 @@
 import { useState, useEffect } from 'react';
-import { getStudents, getTeachers, getCourseTypes, createStudent, updateStudent, deleteStudent } from '../api';
+import { getStudents, createStudent, updateStudent, deleteStudent } from '../api';
 
 export default function Students() {
   const [students, setStudents] = useState([]);
-  const [teachers, setTeachers] = useState([]);
-  const [courseTypes, setCourseTypes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingStudent, setEditingStudent] = useState(null);
   const [search, setSearch] = useState('');
   const [formData, setFormData] = useState({
     name: '', gender: '', age: '', phone: '',
-    guardian_name: '', guardian_phone: '',
-    teacher_id: '', course_type_id: '', memo: ''
+    guardian_name: '', guardian_phone: '', memo: ''
   });
   const [error, setError] = useState('');
   const [deleteModal, setDeleteModal] = useState({ show: false, studentId: null, studentName: '', password: '' });
@@ -20,14 +17,8 @@ export default function Students() {
 
   const fetchData = async () => {
     try {
-      const [studentsRes, teachersRes, courseTypesRes] = await Promise.all([
-        getStudents({ search }),
-        getTeachers({ status: 'active' }),
-        getCourseTypes({ status: 'active' })
-      ]);
+      const studentsRes = await getStudents({ search });
       setStudents(studentsRes.data);
-      setTeachers(teachersRes.data);
-      setCourseTypes(courseTypesRes.data);
     } catch (err) {
       console.error('获取数据失败:', err);
     } finally {
@@ -43,8 +34,8 @@ export default function Students() {
     e.preventDefault();
     setError('');
 
-    if (!formData.teacher_id || !formData.course_type_id) {
-      setError('授课老师和课程类型为必填项');
+    if (!formData.name) {
+      setError('请填写学生姓名');
       return;
     }
 
@@ -67,8 +58,7 @@ export default function Students() {
   const resetFormData = () => {
     setFormData({
       name: '', gender: '', age: '', phone: '',
-      guardian_name: '', guardian_phone: '',
-      teacher_id: '', course_type_id: '', memo: ''
+      guardian_name: '', guardian_phone: '', memo: ''
     });
   };
 
@@ -81,8 +71,6 @@ export default function Students() {
       phone: student.phone || '',
       guardian_name: student.guardian_name || '',
       guardian_phone: student.guardian_phone || '',
-      teacher_id: student.teacher_id || '',
-      course_type_id: student.course_type_id || '',
       memo: student.memo || ''
     });
     setShowModal(true);
@@ -113,6 +101,14 @@ export default function Students() {
     resetFormData();
     setError('');
     setShowModal(true);
+  };
+
+  // 格式化课程汇总显示
+  const formatCoursesSummary = (courses) => {
+    if (!courses || courses.length === 0) return '-';
+    return courses.map(c =>
+      `${c.course_type_name}(${c.teacher_name}, 剩${c.remaining_hours}课时)`
+    ).join(' / ');
   };
 
   return (
@@ -148,9 +144,7 @@ export default function Students() {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">姓名</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">性别</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">年龄</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">课程类型</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">授课老师</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">剩余课时</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">课程</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">备注</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">操作</th>
               </tr>
@@ -161,12 +155,8 @@ export default function Students() {
                   <td className="px-4 py-3 text-sm font-medium text-gray-800">{student.name}</td>
                   <td className="px-4 py-3 text-sm text-gray-600">{student.gender || '-'}</td>
                   <td className="px-4 py-3 text-sm text-gray-600">{student.age || '-'}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{student.course_type_name || '-'}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{student.teacher_name || '-'}</td>
-                  <td className="px-4 py-3 text-sm">
-                    <span className={`font-medium ${student.remaining_hours <= 1 ? 'text-red-600' : 'text-green-600'}`}>
-                      {student.remaining_hours}
-                    </span>
+                  <td className="px-4 py-3 text-sm text-gray-600 max-w-64">
+                    {formatCoursesSummary(student.courses_summary)}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-500 max-w-32 truncate">{student.memo || '-'}</td>
                   <td className="px-4 py-3 text-sm">
@@ -260,37 +250,6 @@ export default function Students() {
                     onChange={(e) => setFormData({ ...formData, guardian_phone: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                   />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">授课老师 *</label>
-                  <select
-                    value={formData.teacher_id}
-                    onChange={(e) => setFormData({ ...formData, teacher_id: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                    required
-                  >
-                    <option value="">请选择</option>
-                    {teachers.map((t) => (
-                      <option key={t.id} value={t.id}>{t.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">课程类型 *</label>
-                  <select
-                    value={formData.course_type_id}
-                    onChange={(e) => setFormData({ ...formData, course_type_id: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                    required
-                  >
-                    <option value="">请选择</option>
-                    {courseTypes.map((ct) => (
-                      <option key={ct.id} value={ct.id}>{ct.name}</option>
-                    ))}
-                  </select>
                 </div>
               </div>
 
