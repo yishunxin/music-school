@@ -1,4 +1,5 @@
 const express = require('express');
+const bcrypt = require('bcryptjs');
 const db = require('../models/db');
 const { authMiddleware } = require('../middleware/auth');
 
@@ -44,7 +45,7 @@ router.get('/', authMiddleware, async (req, res) => {
     res.json(students);
   } catch (err) {
     console.error('Get students error:', err);
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '获取学生列表失败：' + (err.message || '未知错误') });
   }
 });
 
@@ -90,7 +91,8 @@ router.get('/:id', authMiddleware, async (req, res) => {
 
     res.json({ ...student, recharges, courseLogs });
   } catch (err) {
-    res.status(500).json({ error: '服务器错误' });
+    console.error('Get student error:', err);
+    res.status(500).json({ error: '获取学生详情失败：' + (err.message || '未知错误') });
   }
 });
 
@@ -125,7 +127,7 @@ router.post('/', authMiddleware, async (req, res) => {
     res.json({ id: result.insertId, message: '创建成功' });
   } catch (err) {
     console.error('Create student error:', err);
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '创建学生失败：' + (err.message || '未知错误') });
   }
 });
 
@@ -172,11 +174,42 @@ router.put('/:id', authMiddleware, async (req, res) => {
 
     res.json({ message: '更新成功' });
   } catch (err) {
-    res.status(500).json({ error: '服务器错误' });
+    console.error('Update student error:', err);
+    res.status(500).json({ error: '更新学生失败：' + (err.message || '未知错误') });
   }
 });
 
-// 删除学生
+// 删除学生 - 需要验证密码
+router.delete('/:id', authMiddleware, async (req, res) => {
+  try {
+    const { password } = req.body;
+
+    if (!password) {
+      return res.status(400).json({ error: '请输入登录密码进行验证' });
+    }
+
+    // 验证当前用户密码
+    const users = await db.query('SELECT * FROM users WHERE id = ?', [req.user.id]);
+    const user = users[0];
+    if (!user || !bcrypt.compareSync(password, user.password)) {
+      return res.status(401).json({ error: '密码验证失败' });
+    }
+
+    // 检查是否有充值记录
+    const rechargeCount = await db.query('SELECT COUNT(*) as count FROM recharges WHERE student_id = ?', [req.params.id]);
+    if (rechargeCount[0].count > 0) {
+      return res.status(400).json({ error: '该学生有充值记录，无法删除' });
+    }
+
+    await db.query('DELETE FROM students WHERE id = ?', [req.params.id]);
+    res.json({ message: '删除成功' });
+  } catch (err) {
+    console.error('Delete student error:', err);
+    res.status(500).json({ error: '删除学生失败：' + (err.message || '未知错误') });
+  }
+});
+
+module.exports = router;
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
     // 检查是否有充值记录

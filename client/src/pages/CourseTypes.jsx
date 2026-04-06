@@ -29,7 +29,7 @@ export default function CourseTypes() {
     setError('');
 
     try {
-      const submitData = { ...formData, level: parseInt(formData.level) || 1, hours_unit: parseFloat(formData.hours_unit) || 1, price: parseFloat(formData.price) };
+      const submitData = { ...formData, level: parseInt(formData.level) || 1, hours_unit: parseFloat(formData.hours_unit) || 1, price: formData.price ? parseFloat(formData.price) : null };
       if (editingItem) {
         await updateCourseType(editingItem.id, submitData);
       } else {
@@ -126,7 +126,7 @@ export default function CourseTypes() {
                 </div>
                 <div className="flex justify-between">
                   <span>单节单价:</span>
-                  <span className="font-medium text-blue-600">¥{item.price}</span>
+                  <span className="font-medium text-blue-600">{item.price != null ? '¥' + item.price : '未设置'}</span>
                 </div>
                 {item.memo && <p className="text-gray-500 text-xs">备注: {item.memo}</p>}
               </div>
@@ -227,7 +227,7 @@ export default function CourseTypes() {
                   value={formData.price}
                   onChange={(e) => setFormData({ ...formData, price: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  required
+                  placeholder="选填"
                 />
               </div>
 

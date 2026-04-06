@@ -12,7 +12,7 @@ export default function Courses() {
   // 充值表单
   const [rechargeForm, setRechargeForm] = useState({
     student_id: '', course_type_id: '', teacher_id: '',
-    buy_hours: '', gift_hours: '', total_fee: '', recharge_date: new Date().toISOString().split('T')[0], memo: ''
+    buy_hours: '', gift_hours: '', total_fee: '', practice_fee: '', recharge_date: new Date().toISOString().split('T')[0], memo: ''
   });
   const [rechargeList, setRechargeList] = useState([]);
   const [rechargeError, setRechargeError] = useState('');
@@ -103,7 +103,7 @@ export default function Courses() {
       setRechargeSuccess('充值成功！');
       setRechargeForm({
         student_id: '', course_type_id: '', teacher_id: '',
-        buy_hours: '', gift_hours: '', total_fee: '', recharge_date: new Date().toISOString().split('T')[0], memo: ''
+        buy_hours: '', gift_hours: '', total_fee: '', practice_fee: '', recharge_date: new Date().toISOString().split('T')[0], memo: ''
       });
       fetchData();
       loadRecords();
@@ -264,7 +264,7 @@ export default function Courses() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">购买课时 *</label>
                   <input
@@ -284,8 +284,11 @@ export default function Courses() {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                   />
                 </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">总费用(元) *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">课程费(元) *</label>
                   <input
                     type="number"
                     step="0.01"
@@ -293,6 +296,17 @@ export default function Courses() {
                     onChange={(e) => setRechargeForm({ ...rechargeForm, total_fee: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                     required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">练琴费(元)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={rechargeForm.practice_fee}
+                    onChange={(e) => setRechargeForm({ ...rechargeForm, practice_fee: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="无练琴费可填0或留空"
                   />
                 </div>
               </div>
@@ -334,7 +348,8 @@ export default function Courses() {
                   <tr>
                     <th className="px-3 py-2 text-left">学生</th>
                     <th className="px-3 py-2 text-left">课时</th>
-                    <th className="px-3 py-2 text-left">费用</th>
+                    <th className="px-3 py-2 text-left">课程费</th>
+                    <th className="px-3 py-2 text-left">练琴费</th>
                     <th className="px-3 py-2 text-left">日期</th>
                   </tr>
                 </thead>
@@ -344,6 +359,7 @@ export default function Courses() {
                       <td className="px-3 py-2">{r.student_name}</td>
                       <td className="px-3 py-2">+{r.total_hours}</td>
                       <td className="px-3 py-2 text-green-600">¥{r.total_fee}</td>
+                      <td className="px-3 py-2 text-blue-600">{r.practice_fee > 0 ? '¥' + r.practice_fee : '-'}</td>
                       <td className="px-3 py-2">{r.recharge_date}</td>
                     </tr>
                   ))}
@@ -488,7 +504,8 @@ export default function Courses() {
                   <th className="px-3 py-2 text-left">课程类型</th>
                   <th className="px-3 py-2 text-left">购买课时</th>
                   <th className="px-3 py-2 text-left">赠送课时</th>
-                  <th className="px-3 py-2 text-left">总费用</th>
+                  <th className="px-3 py-2 text-left">课程费</th>
+                  <th className="px-3 py-2 text-left">练琴费</th>
                   <th className="px-3 py-2 text-left">日期</th>
                 </tr>
               </thead>
@@ -501,6 +518,7 @@ export default function Courses() {
                     <td className="px-3 py-2">{r.buy_hours}</td>
                     <td className="px-3 py-2">{r.gift_hours}</td>
                     <td className="px-3 py-2 text-green-600">¥{r.total_fee}</td>
+                    <td className="px-3 py-2 text-blue-600">{r.practice_fee > 0 ? '¥' + r.practice_fee : '-'}</td>
                     <td className="px-3 py-2">{r.recharge_date}</td>
                   </tr>
                 ))}

@@ -15,6 +15,8 @@ export default function Students() {
     teacher_id: '', course_type_id: '', memo: ''
   });
   const [error, setError] = useState('');
+  const [deleteModal, setDeleteModal] = useState({ show: false, studentId: null, studentName: '', password: '' });
+  const [deleteError, setDeleteError] = useState('');
 
   const fetchData = async () => {
     try {
@@ -87,12 +89,22 @@ export default function Students() {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('确定要删除该学生吗？')) return;
+    const student = students.find(s => s.id === id);
+    setDeleteModal({ show: true, studentId: id, studentName: student?.name || '', password: '' });
+    setDeleteError('');
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteModal.password) {
+      setDeleteError('请输入登录密码');
+      return;
+    }
     try {
-      await deleteStudent(id);
+      await deleteStudent(deleteModal.studentId, deleteModal.password);
+      setDeleteModal({ show: false, studentId: null, studentName: '', password: '' });
       fetchData();
     } catch (err) {
-      alert(err.response?.data?.error || '删除失败');
+      setDeleteError(err.response?.data?.error || '删除失败');
     }
   };
 
@@ -308,6 +320,55 @@ export default function Students() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 删除确认弹窗 */}
+      {deleteModal.show && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-sm">
+            <h2 className="text-xl font-bold mb-4 text-red-600">删除学生</h2>
+            <p className="text-gray-600 mb-4">
+              确定要删除学生 <span className="font-bold">{deleteModal.studentName}</span> 吗？<br/>
+              此操作不可恢复。
+            </p>
+
+            {deleteError && (
+              <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-4">
+                {deleteError}
+              </div>
+            )}
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">请输入登录密码确认</label>
+              <input
+                type="password"
+                value={deleteModal.password}
+                onChange={(e) => setDeleteModal({ ...deleteModal, password: e.target.value })}
+                onKeyDown={(e) => e.key === 'Enter' && confirmDelete()}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 outline-none"
+                placeholder="输入密码"
+                autoFocus
+              />
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setDeleteModal({ show: false, studentId: null, studentName: '', password: '' })}
+                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={confirmDelete}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+              >
+                确认删除
+              </button>
+            </div>
           </div>
         </div>
       )}

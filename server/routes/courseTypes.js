@@ -51,7 +51,7 @@ router.post('/', authMiddleware, async (req, res) => {
     const result = await db.query(`
       INSERT INTO course_types (name, subject, level, hours_unit, price, memo)
       VALUES (?, ?, ?, ?, ?, ?)
-    `, [name, subject, level || 1, hours_unit || 1, price, memo]);
+    `, [name, subject, level || 1, hours_unit || 1, price || null, memo]);
 
     res.json({ id: result.insertId, message: '创建成功' });
   } catch (err) {

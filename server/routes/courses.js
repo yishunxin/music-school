@@ -8,7 +8,7 @@ const router = express.Router();
 router.post('/recharge', authMiddleware, async (req, res) => {
   let connection;
   try {
-    const { student_id, course_type_id, teacher_id, buy_hours, gift_hours, total_fee, recharge_date, memo } = req.body;
+    const { student_id, course_type_id, teacher_id, buy_hours, gift_hours, total_fee, practice_fee, recharge_date, memo } = req.body;
 
     if (!student_id || !course_type_id || !teacher_id || !buy_hours || total_fee === undefined) {
       return res.status(400).json({ error: '请填写完整信息' });
@@ -34,30 +34,41 @@ router.post('/recharge', authMiddleware, async (req, res) => {
     }
 
     const total_hours = (parseFloat(buy_hours) || 0) + (parseFloat(gift_hours) || 0);
-    const fee = parseFloat(total_fee) || 0;
+    const course_fee = parseFloat(total_fee) || 0;  // 课程费（不含练琴费）
+    const practiceFee = parseFloat(practice_fee) || 0;  // 练琴费
     const buy = parseFloat(buy_hours) || 0;
-    // 每节个点费 = 总费用 / 购买课时 / 2
-    const unit_point_fee = buy > 0 ? fee / buy / 2 : 0;
+    // 教师单节费用 = 课程费 / 购买课时 / 2（不含练琴费）
+    const unit_point_fee = buy > 0 ? course_fee / buy / 2 : 0;
 
     connection = await db.getConnection();
     await connection.beginTransaction();
 
     // 1. 创建充值记录
     const [rechargeResult] = await connection.query(`
-      INSERT INTO recharges (student_id, course_type_id, teacher_id, buy_hours, gift_hours, total_hours, total_fee, unit_point_fee, recharge_date, memo)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [student_id, course_type_id, teacher_id, buy_hours, gift_hours || 0, total_hours, fee, unit_point_fee, recharge_date || new Date().toISOString().split('T')[0], memo]);
+      INSERT INTO recharges (student_id, course_type_id, teacher_id, buy_hours, gift_hours, total_hours, total_fee, practice_fee, unit_point_fee, recharge_date, memo)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [student_id, course_type_id, teacher_id, buy_hours, gift_hours || 0, total_hours, course_fee, practiceFee, unit_point_fee, recharge_date || new Date().toISOString().split('T')[0], memo]);
 
     const recharge_id = rechargeResult.insertId;
 
     // 2. 更新学生剩余课时
     await connection.query('UPDATE students SET remaining_hours = remaining_hours + ? WHERE id = ?', [total_hours, student_id]);
 
-    // 3. 创建收入记录
-    await connection.query(`
-      INSERT INTO transactions (type, amount, category, ref_id, ref_type, description, transaction_date)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `, ['income', fee, '课时收入', recharge_id, 'recharge', `学生${student.name}充值${total_hours}课时`, recharge_date || new Date().toISOString().split('T')[0]]);
+    // 3. 创建收入记录 - 课程费
+    if (course_fee > 0) {
+      await connection.query(`
+        INSERT INTO transactions (type, amount, category, ref_id, ref_type, description, transaction_date)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `, ['income', course_fee, '课时收入', recharge_id, 'recharge', `学生${student.name}充值${total_hours}课时`, recharge_date || new Date().toISOString().split('T')[0]]);
+    }
+
+    // 4. 创建收入记录 - 练琴费（独立分类）
+    if (practiceFee > 0) {
+      await connection.query(`
+        INSERT INTO transactions (type, amount, category, ref_id, ref_type, description, transaction_date)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `, ['income', practiceFee, '练琴费', recharge_id, 'recharge', `学生${student.name}练琴费`, recharge_date || new Date().toISOString().split('T')[0]]);
+    }
 
     await connection.commit();
 
@@ -65,7 +76,7 @@ router.post('/recharge', authMiddleware, async (req, res) => {
   } catch (err) {
     if (connection) await connection.rollback();
     console.error('Recharge error:', err);
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '充值失败：' + (err.message || '未知错误') });
   } finally {
     if (connection) connection.release();
   }
@@ -110,7 +121,7 @@ router.get('/recharges', authMiddleware, async (req, res) => {
     const recharges = await db.query(sql, params);
     res.json(recharges);
   } catch (err) {
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '获取充值记录失败：' + (err.message || '未知错误') });
   }
 });
 
@@ -195,7 +206,7 @@ router.post('/signin', authMiddleware, async (req, res) => {
   } catch (err) {
     if (connection) await connection.rollback();
     console.error('Signin error:', err);
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '签到失败：' + (err.message || '未知错误') });
   } finally {
     if (connection) connection.release();
   }
@@ -245,7 +256,7 @@ router.get('/logs', authMiddleware, async (req, res) => {
     const logs = await db.query(sql, params);
     res.json(logs);
   } catch (err) {
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '获取上课记录失败：' + (err.message || '未知错误') });
   }
 });
 
@@ -281,7 +292,7 @@ router.delete('/logs/:id', authMiddleware, async (req, res) => {
     res.json({ message: '退课成功' });
   } catch (err) {
     if (connection) await connection.rollback();
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '退课失败：' + (err.message || '未知错误') });
   } finally {
     if (connection) connection.release();
   }
@@ -319,7 +330,7 @@ router.get('/stats', authMiddleware, async (req, res) => {
 
     res.json(stats);
   } catch (err) {
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '获取课时统计失败：' + (err.message || '未知错误') });
   }
 });
 
@@ -339,7 +350,7 @@ router.get('/low-balance', authMiddleware, async (req, res) => {
 
     res.json(students);
   } catch (err) {
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '获取课时不足提醒失败：' + (err.message || '未知错误') });
   }
 });
 

@@ -31,7 +31,7 @@ router.get('/', authMiddleware, async (req, res) => {
     res.json(teachers);
   } catch (err) {
     console.error('Get teachers error:', err);
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '获取教师列表失败：' + (err.message || '未知错误') });
   }
 });
 
@@ -62,7 +62,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
 
     res.json({ ...teacher, students, courseTypes });
   } catch (err) {
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '获取教师详情失败：' + (err.message || '未知错误') });
   }
 });
 
@@ -76,14 +76,16 @@ router.post('/', authMiddleware, async (req, res) => {
     }
 
     const subjectsJson = subjects ? JSON.stringify(subjects) : null;
+    const hireDate = hire_date || null;
     const result = await db.query(`
       INSERT INTO teachers (name, phone, subjects, hire_date, memo)
       VALUES (?, ?, ?, ?, ?)
-    `, [name, phone, subjectsJson, hire_date, memo]);
+    `, [name, phone, subjectsJson, hireDate, memo]);
 
     res.json({ id: result.insertId, message: '创建成功' });
   } catch (err) {
-    res.status(500).json({ error: '服务器错误' });
+    console.error('Create teacher error:', err);
+    res.status(500).json({ error: '创建教师失败：' + (err.message || '未知错误') });
   }
 });
 
@@ -112,7 +114,8 @@ router.put('/:id', authMiddleware, async (req, res) => {
 
     res.json({ message: '更新成功' });
   } catch (err) {
-    res.status(500).json({ error: '服务器错误' });
+    console.error('Update teacher error:', err);
+    res.status(500).json({ error: '更新教师失败：' + (err.message || '未知错误') });
   }
 });
 
@@ -128,7 +131,8 @@ router.delete('/:id', authMiddleware, async (req, res) => {
     await db.query('DELETE FROM teachers WHERE id = ?', [req.params.id]);
     res.json({ message: '删除成功' });
   } catch (err) {
-    res.status(500).json({ error: '服务器错误' });
+    console.error('Delete teacher error:', err);
+    res.status(500).json({ error: '删除教师失败：' + (err.message || '未知错误') });
   }
 });
 
