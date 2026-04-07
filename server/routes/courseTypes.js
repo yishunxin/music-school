@@ -91,10 +91,10 @@ router.put('/:id', authMiddleware, async (req, res) => {
 // 删除课程类型
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
-    // 检查是否有学生关联
-    const studentCount = await db.query('SELECT COUNT(*) as count FROM students WHERE course_type_id = ? AND status = ?', [req.params.id, 'active']);
-    if (studentCount[0].count > 0) {
-      return res.status(400).json({ error: '该课程类型有学生关联，无法删除' });
+    // 检查是否有充值记录关联
+    const rechargeCount = await db.query('SELECT COUNT(*) as count FROM recharges WHERE course_type_id = ?', [req.params.id]);
+    if (rechargeCount[0].count > 0) {
+      return res.status(400).json({ error: '该课程类型有充值记录关联，无法删除' });
     }
 
     await db.query('DELETE FROM course_types WHERE id = ?', [req.params.id]);

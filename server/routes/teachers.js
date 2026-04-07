@@ -10,13 +10,11 @@ router.get('/', authMiddleware, async (req, res) => {
     const { status } = req.query;
     let sql = `
       SELECT t.*,
-        COUNT(DISTINCT s.id) as student_count,
-        COUNT(DISTINCT ct.id) as course_type_count
+        COUNT(DISTINCT r.student_id) as student_count,
+        COUNT(DISTINCT r.course_type_id) as course_type_count
       FROM teachers t
-      LEFT JOIN students s ON s.teacher_id = t.id AND s.status = 'active'
-      LEFT JOIN course_types ct ON ct.id IN (
-        SELECT course_type_id FROM students WHERE teacher_id = t.id AND status = 'active'
-      )
+      LEFT JOIN recharges r ON r.teacher_id = t.id
+      LEFT JOIN students s ON s.id = r.student_id AND s.status = 'active'
     `;
 
     const params = [];
@@ -44,20 +42,20 @@ router.get('/:id', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: '教师不存在' });
     }
 
-    // 获取该教师的学生列表
+    // 获取该教师的学生列表（通过recharges表关联）
     const students = await db.query(`
-      SELECT s.*, ct.name as course_type_name
+      SELECT DISTINCT s.id, s.name, s.gender, s.age, s.phone, s.status
       FROM students s
-      LEFT JOIN course_types ct ON ct.id = s.course_type_id
-      WHERE s.teacher_id = ? AND s.status = 'active'
+      INNER JOIN recharges r ON r.student_id = s.id
+      WHERE r.teacher_id = ? AND s.status = 'active'
     `, [req.params.id]);
 
-    // 获取该教师能教授的课程类型
+    // 获取该教师能教授的课程类型（通过recharges表关联）
     const courseTypes = await db.query(`
       SELECT DISTINCT ct.*
       FROM course_types ct
-      INNER JOIN students s ON s.course_type_id = ct.id
-      WHERE s.teacher_id = ? AND ct.status = 'active'
+      INNER JOIN recharges r ON r.course_type_id = ct.id
+      WHERE r.teacher_id = ? AND ct.status = 'active'
     `, [req.params.id]);
 
     res.json({ ...teacher, students, courseTypes });
@@ -122,10 +120,10 @@ router.put('/:id', authMiddleware, async (req, res) => {
 // 删除教师
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
-    // 检查是否有学生关联
-    const studentCount = await db.query('SELECT COUNT(*) as count FROM students WHERE teacher_id = ? AND status = ?', [req.params.id, 'active']);
-    if (studentCount[0].count > 0) {
-      return res.status(400).json({ error: '该教师有学生关联，无法删除' });
+    // 检查是否有充值记录关联
+    const rechargeCount = await db.query('SELECT COUNT(*) as count FROM recharges WHERE teacher_id = ?', [req.params.id]);
+    if (rechargeCount[0].count > 0) {
+      return res.status(400).json({ error: '该教师有充值记录关联，无法删除' });
     }
 
     await db.query('DELETE FROM teachers WHERE id = ?', [req.params.id]);

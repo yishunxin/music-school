@@ -1,6 +1,19 @@
 import { useState, useEffect } from 'react';
 import { getStudents, getTeachers, getCourseTypes, recharge, getRecharges, signIn, getCourseLogs, deleteCourseLog, getCourseStats, getStudentCourses } from '../api';
 
+// 日期格式化函数
+const formatDateTime = (dateStr) => {
+  if (!dateStr) return '-';
+  const d = new Date(dateStr);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  const seconds = String(d.getSeconds()).padStart(2, '0');
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+};
+
 export default function Courses() {
   const [activeTab, setActiveTab] = useState('stats');
   const [students, setStudents] = useState([]);
@@ -364,7 +377,7 @@ export default function Courses() {
                       <td className="px-3 py-2">{r.course_type_name}</td>
                       <td className="px-3 py-2">+{r.total_hours}</td>
                       <td className="px-3 py-2 text-green-600">¥{r.total_fee}</td>
-                      <td className="px-3 py-2">{r.recharge_date}</td>
+                      <td className="px-3 py-2">{formatDateTime(r.recharge_date)}</td>
                     </tr>
                   ))}
                 </tbody>
