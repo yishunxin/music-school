@@ -1,620 +1,510 @@
 import { useState, useEffect } from 'react';
-import { getStudents, getTeachers, getCourseTypes, recharge, getRecharges, signIn, getCourseLogs, deleteCourseLog, getCourseStats, getStudentCourses } from '../api';
-
-// 日期格式化函数
-const formatDateTime = (dateStr) => {
-  if (!dateStr) return '-';
-  const d = new Date(dateStr);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  const hours = String(d.getHours()).padStart(2, '0');
-  const minutes = String(d.getMinutes()).padStart(2, '0');
-  const seconds = String(d.getSeconds()).padStart(2, '0');
-  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-};
+import { Search, Clock, Plus, User, CheckCircle } from 'lucide-react';
+import Card from '../components/common/Card';
+import Button from '../components/common/Button';
+import Empty from '../components/common/Empty';
+import { students, teachers, courseTypes, courses } from '../api';
+import { formatDateTime } from '../utils/format';
 
 export default function Courses() {
-  const [activeTab, setActiveTab] = useState('stats');
-  const [students, setStudents] = useState([]);
+  const [activeTab, setActiveTab] = useState('signin');
+  const [loading, setLoading] = useState(false);
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-bold text-gray-800">课时管理</h1>
+        <p className="text-gray-500 mt-1">签到上课、课时充值、记录查询</p>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-2 bg-white p-1 rounded-xl border border-gray-200">
+        {[
+          { key: 'signin', label: '签到', icon: CheckCircle },
+          { key: 'recharge', label: '充值', icon: Plus },
+          { key: 'records', label: '记录', icon: Clock },
+        ].map((tab) => {
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg font-medium transition-all ${
+                activeTab === tab.key
+                  ? 'bg-primary text-white shadow-md'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Tab Content */}
+      {activeTab === 'signin' && <SignInTab />}
+      {activeTab === 'recharge' && <RechargeTab />}
+      {activeTab === 'records' && <RecordsTab />}
+    </div>
+  );
+}
+
+// 签到 Tab
+function SignInTab() {
+  const [studentOptions, setStudentOptions] = useState([]); // 学生+课程选项
   const [teachers, setTeachers] = useState([]);
   const [courseTypes, setCourseTypes] = useState([]);
-  const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
-
-  // 充值表单
-  const [rechargeForm, setRechargeForm] = useState({
-    student_id: '', course_type_id: '', teacher_id: '',
-    buy_hours: '', gift_hours: '', total_fee: '', practice_fee: '', recharge_date: new Date().toISOString().split('T')[0], memo: ''
+  const [form, setForm] = useState({
+    student_id: '',
+    course_type_id: '', // 现在直接传课程类型ID
+    teacher_id: '',
+    hours: 1,
   });
-  const [rechargeList, setRechargeList] = useState([]);
-  const [rechargeError, setRechargeError] = useState('');
-  const [rechargeSuccess, setRechargeSuccess] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  // 签到表单
-  const [signInForm, setSignInForm] = useState({
-    student_id: '', course_type_id: '', hours: 1, course_date: new Date().toISOString().slice(0, 16), memo: ''
-  });
-  const [courseLogs, setCourseLogs] = useState([]);
-  const [signInError, setSignInError] = useState('');
-  const [signInSuccess, setSignInSuccess] = useState('');
-  const [selectedStudentCourses, setSelectedStudentCourses] = useState([]); // 选中学生的课程列表
+  useEffect(() => {
+    loadData();
+  }, []);
 
-  const fetchData = async () => {
+  const loadData = async () => {
     try {
-      const [studentsRes, teachersRes, courseTypesRes, statsRes] = await Promise.all([
-        getStudents({ status: 'active' }),
-        getTeachers({ status: 'active' }),
-        getCourseTypes({ status: 'active' }),
-        getCourseStats()
+      const [studentsRes, teachersRes, courseTypesRes] = await Promise.all([
+        students.list(),
+        teachers.list(),
+        courseTypes.list(),
       ]);
-      setStudents(studentsRes.data);
-      setTeachers(teachersRes.data);
+
+      // 构建学生+课程选项：有剩余课时的学生和课程
+      const options = [];
+      studentsRes.data.forEach(student => {
+        if (student.courses_summary && student.courses_summary.length > 0) {
+          student.courses_summary.forEach(course => {
+            options.push({
+              student_id: student.id,
+              student_name: student.name,
+              course_type_id: course.course_type_id,
+              course_type_name: course.course_type_name,
+              teacher_id: course.teacher_id,
+              teacher_name: course.teacher_name,
+              remaining_hours: course.remaining_hours,
+            });
+          });
+        }
+      });
+      setStudentOptions(options);
+
+      setTeachers(teachersRes.data.filter((t) => t.status === 1));
       setCourseTypes(courseTypesRes.data);
-      setStats(statsRes.data);
     } catch (err) {
-      console.error('获取数据失败:', err);
+      console.error('加载数据失败:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  // 加载充值记录和上课记录
-  const loadRecords = async () => {
-    try {
-      const [rechargesRes, logsRes] = await Promise.all([
-        getRecharges(),
-        getCourseLogs()
-      ]);
-      setRechargeList(rechargesRes.data);
-      setCourseLogs(logsRes.data);
-    } catch (err) {
-      console.error('获取记录失败:', err);
-    }
-  };
-
-  useEffect(() => {
-    if (activeTab === 'recharge') loadRecords();
-    if (activeTab === 'signin') loadRecords();
-  }, [activeTab]);
-
-  // 处理学生选择变化 - 签到
-  const handleSignInStudentChange = async (studentId) => {
-    setSignInForm(prev => ({
-      ...prev,
-      student_id: studentId,
-      course_type_id: '' // 清空课程类型选择
-    }));
-    setSelectedStudentCourses([]);
-
-    if (studentId) {
-      try {
-        const coursesRes = await getStudentCourses(studentId);
-        const courses = coursesRes.data.courses || [];
-        setSelectedStudentCourses(courses);
-
-        // 默认选中充值最早的课程
-        if (courses.length > 0) {
-          const earliestCourse = courses[0];
-          setSignInForm(prev => ({
-            ...prev,
-            course_type_id: earliestCourse.course_type_id.toString()
-          }));
-        }
-      } catch (err) {
-        console.error('获取学生课程失败:', err);
-      }
-    }
-  };
-
-  // 课时充值
-  const handleRecharge = async (e) => {
-    e.preventDefault();
-    setRechargeError('');
-    setRechargeSuccess('');
-
-    try {
-      await recharge(rechargeForm);
-      setRechargeSuccess('充值成功！');
-      setRechargeForm({
-        student_id: '', course_type_id: '', teacher_id: '',
-        buy_hours: '', gift_hours: '', total_fee: '', practice_fee: '', recharge_date: new Date().toISOString().split('T')[0], memo: ''
-      });
-      fetchData();
-      loadRecords();
-    } catch (err) {
-      setRechargeError(err.response?.data?.error || '充值失败');
-    }
-  };
-
-  // 上课签到
-  const handleSignIn = async (e) => {
-    e.preventDefault();
-    setSignInError('');
-    setSignInSuccess('');
-
-    if (!signInForm.course_type_id) {
-      setSignInError('请选择课程类型');
+  const handleSubmit = async () => {
+    if (!form.student_id || !form.course_type_id || !form.teacher_id) {
+      alert('请选择学生、课程和教师');
       return;
     }
 
+    setSubmitting(true);
     try {
-      const result = await signIn(signInForm);
-      const selectedCourse = selectedStudentCourses.find(c => c.course_type_id.toString() === signInForm.course_type_id);
-      const courseName = selectedCourse ? selectedCourse.course_type_name : '';
-      setSignInSuccess(`签到成功！${courseName} 剩余课时: ${result.data.remaining_hours}`);
-      setSignInForm({
-        student_id: '', course_type_id: '', hours: 1, course_date: new Date().toISOString().slice(0, 16), memo: ''
-      });
-      setSelectedStudentCourses([]);
-      fetchData();
-      loadRecords();
+      await courses.signIn(form);
+      alert('签到成功');
+      setForm({ student_id: '', course_type_id: '', teacher_id: '', hours: 1 });
+      loadData();
     } catch (err) {
-      setSignInError(err.response?.data?.error || '签到失败');
-    }
-  };
-
-  // 退课
-  const handleRefund = async (logId) => {
-    if (!confirm('确定要退课吗？课时将退还给学生。')) return;
-    try {
-      await deleteCourseLog(logId);
-      fetchData();
-      loadRecords();
-    } catch (err) {
-      alert(err.response?.data?.error || '退课失败');
+      alert('签到失败: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setSubmitting(false);
     }
   };
 
   if (loading) {
-    return <div className="p-6 text-center text-gray-500">加载中...</div>;
+    return <div className="text-center py-12 text-gray-500">加载中...</div>;
   }
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold text-gray-800 mb-6">课时管理</h1>
-
-      {/* Tab 切换 */}
-      <div className="flex gap-2 mb-6">
-        {['stats', 'recharge', 'signin', 'records'].map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2 rounded-lg font-medium transition ${
-              activeTab === tab
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
+    <Card title="上课签到">
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">选择学生和课程 *</label>
+          <select
+            value={`${form.student_id}-${form.course_type_id}`}
+            onChange={(e) => {
+              const [student_id, course_type_id] = e.target.value.split('-');
+              const option = studentOptions.find(o => o.student_id === Number(student_id) && o.course_type_id === Number(course_type_id));
+              setForm({
+                ...form,
+                student_id,
+                course_type_id,
+                teacher_id: option?.teacher_id?.toString() || '',
+              });
+            }}
+            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
           >
-            {tab === 'stats' ? '课时统计' : tab === 'recharge' ? '课时充值' : tab === 'signin' ? '上课签到' : '记录查询'}
-          </button>
-        ))}
+            <option value="">请选择学生和课程</option>
+            {studentOptions.map((opt, idx) => (
+              <option key={idx} value={`${opt.student_id}-${opt.course_type_id}`}>
+                {opt.student_name} - {opt.course_type_name} (剩余{opt.remaining_hours}课时)
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">选择教师 *</label>
+          <select
+            value={form.teacher_id}
+            onChange={(e) => setForm({ ...form, teacher_id: e.target.value })}
+            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+          >
+            <option value="">请选择教师</option>
+            {teachers.map((t) => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">消耗课时</label>
+          <input
+            type="number"
+            step="0.5"
+            min="0.5"
+            max="10"
+            value={form.hours}
+            onChange={(e) => setForm({ ...form, hours: Number(e.target.value) })}
+            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+          />
+        </div>
+
+        <Button
+          className="w-full"
+          onClick={handleSubmit}
+          loading={submitting}
+          disabled={!form.student_id || !form.course_type_id || !form.teacher_id}
+        >
+          <CheckCircle className="w-4 h-4" />
+          确认签到
+        </Button>
       </div>
+    </Card>
+  );
+}
 
-      {/* 课时统计 */}
-      {activeTab === 'stats' && stats && (
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          <div className="bg-white rounded-xl shadow-sm p-5">
-            <p className="text-sm text-gray-500">学生总数</p>
-            <p className="text-2xl font-bold text-blue-600">{stats.total_students}</p>
-          </div>
-          <div className="bg-white rounded-xl shadow-sm p-5">
-            <p className="text-sm text-gray-500">教师总数</p>
-            <p className="text-2xl font-bold text-green-600">{stats.total_teachers}</p>
-          </div>
-          <div className="bg-white rounded-xl shadow-sm p-5">
-            <p className="text-sm text-gray-500">充值次数</p>
-            <p className="text-2xl font-bold text-purple-600">{stats.total_recharges}</p>
-          </div>
-          <div className="bg-white rounded-xl shadow-sm p-5">
-            <p className="text-sm text-gray-500">已售课时</p>
-            <p className="text-2xl font-bold text-orange-600">{stats.total_hours_sold}</p>
-          </div>
-          <div className="bg-white rounded-xl shadow-sm p-5">
-            <p className="text-sm text-gray-500">已消耗课时</p>
-            <p className="text-2xl font-bold text-red-600">{stats.total_hours_consumed}</p>
-          </div>
-          <div className="bg-white rounded-xl shadow-sm p-5">
-            <p className="text-sm text-gray-500">剩余总课时</p>
-            <p className="text-2xl font-bold text-teal-600">{stats.total_remaining}</p>
-          </div>
+// 充值 Tab
+function RechargeTab() {
+  const [studentOptions, setStudentOptions] = useState([]); // 学生+课程选项
+  const [teachers, setTeachers] = useState([]);
+  const [courseTypes, setCourseTypes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({
+    student_id: '',
+    course_type_id: '',
+    teacher_id: '',
+    buy_hours: 10,
+    gift_hours: 0,
+    total_fee: '',
+  });
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      const [studentsRes, teachersRes, courseTypesRes] = await Promise.all([
+        students.list(),
+        teachers.list(),
+        courseTypes.list(),
+      ]);
+
+      // 构建学生选项（包含课程信息）
+      const options = studentsRes.data.map(s => ({
+        ...s,
+        courses_summary: s.courses_summary || [],
+      }));
+      setStudentOptions(options);
+
+      setTeachers(teachersRes.data.filter((t) => t.status === 1));
+      setCourseTypes(courseTypesRes.data);
+    } catch (err) {
+      console.error('加载数据失败:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const selectedStudent = studentOptions.find(s => s.id === Number(form.student_id));
+
+  const handleCourseChange = (courseTypeId) => {
+    const course = courseTypes.find((c) => c.id === Number(courseTypeId));
+    if (course) {
+      const price = Number(course.price);
+      const total = (form.buy_hours + form.gift_hours) * price;
+      setForm({
+        ...form,
+        course_type_id: courseTypeId,
+        total_fee: total.toFixed(2),
+      });
+    }
+  };
+
+  const handleHoursChange = (buyHours, giftHours) => {
+    const course = courseTypes.find((c) => c.id === Number(form.course_type_id));
+    if (course) {
+      const price = Number(course.price);
+      const total = (Number(buyHours) + Number(giftHours)) * price;
+      setForm({
+        ...form,
+        buy_hours: buyHours,
+        gift_hours: giftHours,
+        total_fee: total.toFixed(2),
+      });
+    } else {
+      setForm({
+        ...form,
+        buy_hours: buyHours,
+        gift_hours: giftHours,
+      });
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!form.student_id || !form.teacher_id || !form.course_type_id) {
+      alert('请选择学生、教师和课程类型');
+      return;
+    }
+    if (form.buy_hours <= 0) {
+      alert('购买课时必须大于0');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await courses.recharge(form);
+      alert('充值成功');
+      setForm({
+        student_id: '',
+        course_type_id: '',
+        teacher_id: '',
+        buy_hours: 10,
+        gift_hours: 0,
+        total_fee: '',
+      });
+      loadData();
+    } catch (err) {
+      alert('充值失败: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="text-center py-12 text-gray-500">加载中...</div>;
+  }
+
+  return (
+    <Card title="课时充值">
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">选择学生 *</label>
+          <select
+            value={form.student_id}
+            onChange={(e) => setForm({
+              ...form,
+              student_id: e.target.value,
+              course_type_id: '',
+            })}
+            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+          >
+            <option value="">请选择学生</option>
+            {studentOptions.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+                {s.courses_summary?.length > 0 && ` (已有${s.courses_summary.length}门课程)`}
+              </option>
+            ))}
+          </select>
         </div>
-      )}
 
-      {/* 课时充值 */}
-      {activeTab === 'recharge' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <h2 className="text-lg font-bold mb-4">新建充值</h2>
-
-            {rechargeError && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-4">{rechargeError}</div>}
-            {rechargeSuccess && <div className="bg-green-50 text-green-600 p-3 rounded-lg text-sm mb-4">{rechargeSuccess}</div>}
-
-            <form onSubmit={handleRecharge} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">学生 *</label>
-                <select
-                  value={rechargeForm.student_id}
-                  onChange={(e) => setRechargeForm({ ...rechargeForm, student_id: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  required
-                >
-                  <option value="">请选择学生</option>
-                  {students.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">课程类型 *</label>
-                  <select
-                    value={rechargeForm.course_type_id}
-                    onChange={(e) => setRechargeForm({ ...rechargeForm, course_type_id: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                    required
-                  >
-                    <option value="">请选择</option>
-                    {courseTypes.map((ct) => (
-                      <option key={ct.id} value={ct.id}>{ct.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">授课老师 *</label>
-                  <select
-                    value={rechargeForm.teacher_id}
-                    onChange={(e) => setRechargeForm({ ...rechargeForm, teacher_id: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                    required
-                  >
-                    <option value="">请选择</option>
-                    {teachers.map((t) => (
-                      <option key={t.id} value={t.id}>{t.name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">购买课时 *</label>
-                  <input
-                    type="number"
-                    value={rechargeForm.buy_hours}
-                    onChange={(e) => setRechargeForm({ ...rechargeForm, buy_hours: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">赠送课时</label>
-                  <input
-                    type="number"
-                    value={rechargeForm.gift_hours}
-                    onChange={(e) => setRechargeForm({ ...rechargeForm, gift_hours: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">课程费(元) *</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={rechargeForm.total_fee}
-                    onChange={(e) => setRechargeForm({ ...rechargeForm, total_fee: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">练琴费(元)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={rechargeForm.practice_fee}
-                    onChange={(e) => setRechargeForm({ ...rechargeForm, practice_fee: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                    placeholder="无练琴费可填0或留空"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">充值日期</label>
-                <input
-                  type="date"
-                  value={rechargeForm.recharge_date}
-                  onChange={(e) => setRechargeForm({ ...rechargeForm, recharge_date: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">备注</label>
-                <input
-                  type="text"
-                  value={rechargeForm.memo}
-                  onChange={(e) => setRechargeForm({ ...rechargeForm, memo: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition"
-              >
-                确认充值
-              </button>
-            </form>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <h2 className="text-lg font-bold mb-4">充值记录</h2>
-            <div className="overflow-auto max-h-96">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-3 py-2 text-left">学生</th>
-                    <th className="px-3 py-2 text-left">课程</th>
-                    <th className="px-3 py-2 text-left">课时</th>
-                    <th className="px-3 py-2 text-left">课程费</th>
-                    <th className="px-3 py-2 text-left">日期</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {rechargeList.slice(0, 20).map((r) => (
-                    <tr key={r.id}>
-                      <td className="px-3 py-2">{r.student_name}</td>
-                      <td className="px-3 py-2">{r.course_type_name}</td>
-                      <td className="px-3 py-2">+{r.total_hours}</td>
-                      <td className="px-3 py-2 text-green-600">¥{r.total_fee}</td>
-                      <td className="px-3 py-2">{formatDateTime(r.recharge_date)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">选择教师 *</label>
+          <select
+            value={form.teacher_id}
+            onChange={(e) => setForm({ ...form, teacher_id: e.target.value })}
+            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+          >
+            <option value="">请选择教师</option>
+            {teachers.map((t) => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
         </div>
-      )}
 
-      {/* 上课签到 */}
-      {activeTab === 'signin' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <h2 className="text-lg font-bold mb-4">上课签到</h2>
-
-            {signInError && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-4">{signInError}</div>}
-            {signInSuccess && <div className="bg-green-50 text-green-600 p-3 rounded-lg text-sm mb-4">{signInSuccess}</div>}
-
-            <form onSubmit={handleSignIn} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">学生 *</label>
-                <select
-                  value={signInForm.student_id}
-                  onChange={(e) => handleSignInStudentChange(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  required
-                >
-                  <option value="">请选择学生</option>
-                  {students.map((s) => {
-                    const courses = s.courses_summary || [];
-                    const coursesDisplay = courses.length > 0
-                      ? courses.map(c => `${c.course_type_name}剩${c.remaining_hours}课时`).join(' / ')
-                      : '暂无课时';
-                    return (
-                      <option key={s.id} value={s.id}>
-                        {s.name} ({coursesDisplay})
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
-
-              {/* 课程类型选择 */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">课程类型 *</label>
-                <select
-                  value={signInForm.course_type_id}
-                  onChange={(e) => setSignInForm({ ...signInForm, course_type_id: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  required
-                >
-                  <option value="">请选择</option>
-                  {selectedStudentCourses.map((course) => (
-                    <option key={course.course_type_id} value={course.course_type_id}>
-                      {course.course_type_name} - {course.teacher_name} (剩余{course.remaining_hours}课时)
-                      {course.remaining_hours <= 1 && ' ⚠️'}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {signInForm.course_type_id && (
-                <div className="bg-gray-50 p-3 rounded-lg text-sm space-y-1">
-                  <p className="text-gray-600">
-                    课程：{selectedStudentCourses.find(c => c.course_type_id.toString() === signInForm.course_type_id)?.course_type_name || '-'}
-                  </p>
-                  <p className="text-gray-600">
-                    授课老师：{selectedStudentCourses.find(c => c.course_type_id.toString() === signInForm.course_type_id)?.teacher_name || '-'}
-                  </p>
-                  <p className="font-medium">
-                    剩余课时：
-                    <span className={
-                      (selectedStudentCourses.find(c => c.course_type_id.toString() === signInForm.course_type_id)?.remaining_hours || 0) <= 1
-                        ? 'text-red-600'
-                        : 'text-green-600'
-                    }>
-                      {selectedStudentCourses.find(c => c.course_type_id.toString() === signInForm.course_type_id)?.remaining_hours || 0}
-                    </span>
-                  </p>
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">消耗课时</label>
-                  <input
-                    type="number"
-                    step="0.5"
-                    value={signInForm.hours}
-                    onChange={(e) => setSignInForm({ ...signInForm, hours: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">上课时间</label>
-                  <input
-                    type="datetime-local"
-                    value={signInForm.course_date}
-                    onChange={(e) => setSignInForm({ ...signInForm, course_date: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">备注</label>
-                <input
-                  type="text"
-                  value={signInForm.memo}
-                  onChange={(e) => setSignInForm({ ...signInForm, memo: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition"
-              >
-                确认签到
-              </button>
-            </form>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <h2 className="text-lg font-bold mb-4">上课记录</h2>
-            <div className="overflow-auto max-h-96">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-3 py-2 text-left">学生</th>
-                    <th className="px-3 py-2 text-left">课程</th>
-                    <th className="px-3 py-2 text-left">课时</th>
-                    <th className="px-3 py-2 text-left">时间</th>
-                    <th className="px-3 py-2 text-left">操作</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {courseLogs.slice(0, 20).map((log) => (
-                    <tr key={log.id}>
-                      <td className="px-3 py-2">{log.student_name}</td>
-                      <td className="px-3 py-2">{log.course_type_name}</td>
-                      <td className="px-3 py-2">-{log.hours}</td>
-                      <td className="px-3 py-2">{new Date(log.course_date).toLocaleString()}</td>
-                      <td className="px-3 py-2">
-                        <button
-                          onClick={() => handleRefund(log.id)}
-                          className="text-red-600 hover:text-red-800"
-                        >
-                          退课
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">选择课程 *</label>
+          <select
+            value={form.course_type_id}
+            onChange={(e) => handleCourseChange(e.target.value)}
+            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+          >
+            <option value="">请选择课程</option>
+            {courseTypes.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} - {c.level}级 (¥{c.price}/课时)
+              </option>
+            ))}
+          </select>
         </div>
-      )}
 
-      {/* 记录查询 */}
-      {activeTab === 'records' && (
-        <div className="bg-white rounded-xl shadow-sm p-6">
-          <h2 className="text-lg font-bold mb-4">全部记录</h2>
-          <div className="mb-4">
-            <p className="text-sm text-gray-500">充值记录和上课记录</p>
-          </div>
-
-          <div className="mb-6">
-            <h3 className="font-medium text-gray-700 mb-2">充值记录</h3>
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-3 py-2 text-left">ID</th>
-                  <th className="px-3 py-2 text-left">学生</th>
-                  <th className="px-3 py-2 text-left">课程类型</th>
-                  <th className="px-3 py-2 text-left">授课老师</th>
-                  <th className="px-3 py-2 text-left">购买课时</th>
-                  <th className="px-3 py-2 text-left">赠送课时</th>
-                  <th className="px-3 py-2 text-left">课程费</th>
-                  <th className="px-3 py-2 text-left">练琴费</th>
-                  <th className="px-3 py-2 text-left">日期</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {rechargeList.map((r) => (
-                  <tr key={r.id}>
-                    <td className="px-3 py-2">{r.id}</td>
-                    <td className="px-3 py-2">{r.student_name}</td>
-                    <td className="px-3 py-2">{r.course_type_name}</td>
-                    <td className="px-3 py-2">{r.teacher_name}</td>
-                    <td className="px-3 py-2">{r.buy_hours}</td>
-                    <td className="px-3 py-2">{r.gift_hours}</td>
-                    <td className="px-3 py-2 text-green-600">¥{r.total_fee}</td>
-                    <td className="px-3 py-2 text-blue-600">{r.practice_fee > 0 ? '¥' + r.practice_fee : '-'}</td>
-                    <td className="px-3 py-2">{r.recharge_date}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
+        <div className="grid grid-cols-2 gap-4">
           <div>
-            <h3 className="font-medium text-gray-700 mb-2">上课记录</h3>
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-3 py-2 text-left">ID</th>
-                  <th className="px-3 py-2 text-left">学生</th>
-                  <th className="px-3 py-2 text-left">教师</th>
-                  <th className="px-3 py-2 text-left">课程类型</th>
-                  <th className="px-3 py-2 text-left">消耗课时</th>
-                  <th className="px-3 py-2 text-left">教师费用</th>
-                  <th className="px-3 py-2 text-left">上课时间</th>
-                  <th className="px-3 py-2 text-left">操作</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {courseLogs.map((log) => (
-                  <tr key={log.id}>
-                    <td className="px-3 py-2">{log.id}</td>
-                    <td className="px-3 py-2">{log.student_name}</td>
-                    <td className="px-3 py-2">{log.teacher_name}</td>
-                    <td className="px-3 py-2">{log.course_type_name}</td>
-                    <td className="px-3 py-2">-{log.hours}</td>
-                    <td className="px-3 py-2 text-red-600">¥{log.total_fee}</td>
-                    <td className="px-3 py-2">{new Date(log.course_date).toLocaleString()}</td>
-                    <td className="px-3 py-2">
-                      <button onClick={() => handleRefund(log.id)} className="text-red-600 hover:text-red-800">退课</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <label className="block text-sm font-medium text-gray-700 mb-2">购买课时</label>
+            <input
+              type="number"
+              min="1"
+              value={form.buy_hours}
+              onChange={(e) => handleHoursChange(e.target.value, form.gift_hours)}
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+            />
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">赠送课时</label>
+            <input
+              type="number"
+              min="0"
+              value={form.gift_hours}
+              onChange={(e) => handleHoursChange(form.buy_hours, e.target.value)}
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+            />
+          </div>
+        </div>
+
+        <div className="p-4 bg-gray-50 rounded-xl">
+          <div className="flex justify-between items-center">
+            <span className="text-gray-600">应付金额</span>
+            <span className="text-2xl font-bold text-primary">
+              ¥{form.total_fee || '0.00'}
+            </span>
+          </div>
+        </div>
+
+        <Button
+          className="w-full"
+          onClick={handleSubmit}
+          loading={submitting}
+          disabled={!form.student_id || !form.teacher_id || !form.course_type_id}
+        >
+          <Plus className="w-4 h-4" />
+          确认充值
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+// 记录 Tab
+function RecordsTab() {
+  const [records, setRecords] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filters, setFilters] = useState({
+    student_id: '',
+    start_date: '',
+    end_date: '',
+  });
+
+  useEffect(() => {
+    loadRecords();
+  }, []);
+
+  const loadRecords = async () => {
+    try {
+      const params = {};
+      if (filters.student_id) params.student_id = filters.student_id;
+      if (filters.start_date) params.start_date = filters.start_date;
+      if (filters.end_date) params.end_date = filters.end_date;
+
+      const res = await courses.records(params);
+      setRecords(res.data);
+    } catch (err) {
+      console.error('加载记录失败:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSearch = (e) => {
+    e.preventDefault();
+    loadRecords();
+  };
+
+  if (loading) {
+    return <div className="text-center py-12 text-gray-500">加载中...</div>;
+  }
+
+  return (
+    <div className="space-y-4">
+      <Card className="!p-4">
+        <form onSubmit={handleSearch} className="flex flex-wrap gap-3">
+          <input
+            type="date"
+            value={filters.start_date}
+            onChange={(e) => setFilters({ ...filters, start_date: e.target.value })}
+            className="px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+          />
+          <input
+            type="date"
+            value={filters.end_date}
+            onChange={(e) => setFilters({ ...filters, end_date: e.target.value })}
+            className="px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+          />
+          <Button type="submit">
+            <Search className="w-4 h-4" />
+            查询
+          </Button>
+        </form>
+      </Card>
+
+      {records.length === 0 ? (
+        <Empty message="暂无上课记录" />
+      ) : (
+        <div className="space-y-3">
+          {records.map((record) => (
+            <Card key={record.id} className="!p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                    record.type === 'sign_in' ? 'bg-success/10' : 'bg-primary/10'
+                  }`}>
+                    <Clock className={`w-5 h-5 ${
+                      record.type === 'sign_in' ? 'text-success' : 'text-primary'
+                    }`} />
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-800">{record.student_name}</p>
+                    <p className="text-sm text-gray-500">
+                      {record.course_name} - {record.teacher_name}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className={`font-medium ${
+                    record.type === 'sign_in' ? 'text-error' : 'text-success'
+                  }`}>
+                    {record.type === 'sign_in' ? '-' : '+'}{record.hours}课时
+                  </p>
+                  <p className="text-xs text-gray-500">{formatDateTime(record.created_at)}</p>
+                </div>
+              </div>
+            </Card>
+          ))}
         </div>
       )}
     </div>

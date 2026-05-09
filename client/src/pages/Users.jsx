@@ -1,198 +1,279 @@
 import { useState, useEffect } from 'react';
-import { getUsers, createUser, updateUser, deleteUser } from '../api';
+import { Plus, Search, Edit2, Trash2, User } from 'lucide-react';
+import Card from '../components/common/Card';
+import Button from '../components/common/Button';
+import Modal from '../components/common/Modal';
+import Empty from '../components/common/Empty';
+import { users } from '../api';
 
 export default function Users() {
-  const [users, setUsers] = useState([]);
+  const [userList, setUserList] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [editingUser, setEditingUser] = useState(null);
-  const [formData, setFormData] = useState({ username: '', password: '', role: 'admin' });
-  const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editData, setEditData] = useState(null);
 
-  const fetchUsers = async () => {
+  useEffect(() => {
+    loadUsers();
+  }, []);
+
+  const loadUsers = async () => {
     try {
-      const { data } = await getUsers();
-      setUsers(data);
+      const res = await users.list();
+      setUserList(res.data);
     } catch (err) {
-      console.error('获取用户列表失败:', err);
+      console.error('加载账号列表失败:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchUsers();
-  }, []);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-
+  const handleSave = async (data) => {
     try {
-      if (editingUser) {
-        await updateUser(editingUser.id, formData);
+      if (editData) {
+        await users.update(editData.id, data);
       } else {
-        await createUser(formData);
+        await users.create(data);
       }
-      setShowModal(false);
-      setEditingUser(null);
-      setFormData({ username: '', password: '', role: 'admin' });
-      fetchUsers();
+      setModalOpen(false);
+      setEditData(null);
+      loadUsers();
     } catch (err) {
-      setError(err.response?.data?.error || '操作失败');
+      alert('保存失败: ' + (err.response?.data?.message || err.message));
     }
-  };
-
-  const handleEdit = (user) => {
-    setEditingUser(user);
-    setFormData({ username: user.username, password: '', role: user.role });
-    setShowModal(true);
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('确定要删除该用户吗？')) return;
-
+    if (!confirm('确定要删除该账号吗？')) return;
     try {
-      await deleteUser(id);
-      fetchUsers();
+      await users.delete(id);
+      loadUsers();
     } catch (err) {
-      alert(err.response?.data?.error || '删除失败');
+      alert('删除失败: ' + (err.response?.data?.message || err.message));
     }
   };
 
-  const openAddModal = () => {
-    setEditingUser(null);
-    setFormData({ username: '', password: '', role: 'admin' });
-    setError('');
-    setShowModal(true);
+  const filteredUsers = userList.filter((u) =>
+    u.username?.includes(search)
+  );
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">账号管理</h1>
+          <p className="text-gray-500 mt-1">管理系统用户账号</p>
+        </div>
+        <Button onClick={() => { setEditData(null); setModalOpen(true); }}>
+          <Plus className="w-4 h-4" />
+          添加账号
+        </Button>
+      </div>
+
+      {/* Search */}
+      <Card className="!p-4">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+          <input
+            type="text"
+            placeholder="搜索用户名..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+          />
+        </div>
+      </Card>
+
+      {/* User List */}
+      {loading ? (
+        <div className="text-center py-12 text-gray-500">加载中...</div>
+      ) : filteredUsers.length === 0 ? (
+        <Empty message="暂无账号数据" />
+      ) : (
+        <Card>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  <th className="text-left py-3 px-4 font-medium text-gray-600">用户名</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-600">角色</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-600">状态</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-600">创建时间</th>
+                  <th className="text-right py-3 px-4 font-medium text-gray-600">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredUsers.map((user) => (
+                  <tr key={user.id} className="border-b border-gray-50 hover:bg-gray-50">
+                    <td className="py-3 px-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center">
+                          <User className="w-4 h-4 text-primary" />
+                        </div>
+                        <span className="font-medium text-gray-800">{user.username}</span>
+                      </div>
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className="px-2 py-1 bg-gray-100 text-gray-600 text-sm rounded">
+                        {user.role === 'admin' ? '管理员' : '普通用户'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className={`px-2 py-1 text-sm rounded ${
+                        user.status === 1
+                          ? 'bg-success/10 text-success'
+                          : 'bg-gray-100 text-gray-500'
+                      }`}>
+                        {user.status === 1 ? '启用' : '禁用'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-sm text-gray-500">
+                      {user.created_at ? new Date(user.created_at).toLocaleDateString('zh-CN') : '-'}
+                    </td>
+                    <td className="py-3 px-4">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => { setEditData(user); setModalOpen(true); }}
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDelete(user.id)}
+                          className="text-error hover:bg-error/10"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      {/* Add/Edit Modal */}
+      <Modal
+        open={modalOpen}
+        onClose={() => { setModalOpen(false); setEditData(null); }}
+        title={editData ? '编辑账号' : '添加账号'}
+      >
+        <UserForm
+          data={editData}
+          onSave={handleSave}
+          onCancel={() => { setModalOpen(false); setEditData(null); }}
+        />
+      </Modal>
+    </div>
+  );
+}
+
+function UserForm({ data, onSave, onCancel }) {
+  const [form, setForm] = useState({
+    username: data?.username || '',
+    password: '',
+    role: data?.role || 'user',
+    status: data?.status ?? 1,
+  });
+  const [confirmPassword, setConfirmPassword] = useState('');
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!form.username) {
+      alert('请输入用户名');
+      return;
+    }
+    if (!editData && (!form.password || form.password.length < 6)) {
+      alert('密码长度不能少于6位');
+      return;
+    }
+    if (!editData && form.password !== confirmPassword) {
+      alert('两次密码输入不一致');
+      return;
+    }
+
+    const submitData = { ...form };
+    if (!submitData.password) delete submitData.password;
+    onSave(submitData);
   };
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">账号管理</h1>
-        <button
-          onClick={openAddModal}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition"
-        >
-          + 添加账号
-        </button>
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">用户名 *</label>
+        <input
+          type="text"
+          value={form.username}
+          onChange={(e) => setForm({ ...form, username: e.target.value })}
+          className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+          placeholder="请输入用户名"
+        />
       </div>
 
-      {loading ? (
-        <div className="text-center py-10 text-gray-500">加载中...</div>
-      ) : (
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">用户名</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">角色</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">创建时间</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">操作</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {users.map((user) => (
-                <tr key={user.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 text-sm text-gray-500">{user.id}</td>
-                  <td className="px-6 py-4 text-sm font-medium text-gray-800">{user.username}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">
-                    <span className={`px-2 py-1 rounded-full text-xs ${user.role === 'super_admin' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
-                      {user.role === 'super_admin' ? '超级管理员' : '管理员'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-500">{new Date(user.created_at).toLocaleDateString()}</td>
-                  <td className="px-6 py-4 text-sm">
-                    <button
-                      onClick={() => handleEdit(user)}
-                      className="text-blue-600 hover:text-blue-800 mr-3"
-                    >
-                      编辑
-                    </button>
-                    <button
-                      onClick={() => handleDelete(user.id)}
-                      className="text-red-600 hover:text-red-800"
-                    >
-                      删除
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          密码 {editData && '(不修改请留空)'}
+        </label>
+        <input
+          type="password"
+          value={form.password}
+          onChange={(e) => setForm({ ...form, password: e.target.value })}
+          className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+          placeholder={editData ? '不修改请留空' : '请输入密码'}
+        />
+      </div>
+
+      {!editData && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">确认密码 *</label>
+          <input
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+            placeholder="请再次输入密码"
+          />
         </div>
       )}
 
-      {/* Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md">
-            <h2 className="text-xl font-bold mb-4">{editingUser ? '编辑账号' : '添加账号'}</h2>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">角色</label>
+        <select
+          value={form.role}
+          onChange={(e) => setForm({ ...form, role: e.target.value })}
+          className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+        >
+          <option value="user">普通用户</option>
+          <option value="admin">管理员</option>
+        </select>
+      </div>
 
-            {error && (
-              <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-4">
-                {error}
-              </div>
-            )}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">状态</label>
+        <select
+          value={form.status}
+          onChange={(e) => setForm({ ...form, status: Number(e.target.value) })}
+          className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+        >
+          <option value={1}>启用</option>
+          <option value={0}>禁用</option>
+        </select>
+      </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">用户名</label>
-                <input
-                  type="text"
-                  value={formData.username}
-                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  密码 {editingUser && '(不修改请留空)'}
-                </label>
-                <input
-                  type="password"
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  required={!editingUser}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">角色</label>
-                <select
-                  value={formData.role}
-                  onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                >
-                  <option value="admin">管理员</option>
-                  <option value="super_admin">超级管理员</option>
-                </select>
-              </div>
-
-              <div className="flex justify-end gap-3 mt-6">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition"
-                >
-                  取消
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-                >
-                  保存
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
+      <div className="flex justify-end gap-3 pt-4">
+        <Button type="button" variant="outline" onClick={onCancel}>
+          取消
+        </Button>
+        <Button type="submit">
+          保存
+        </Button>
+      </div>
+    </form>
   );
 }

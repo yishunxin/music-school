@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import { login as apiLogin, getCurrentUser } from '../api';
+import { auth } from '../api';
 
 const AuthContext = createContext(null);
 
@@ -9,20 +9,19 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const token = localStorage.getItem('token');
-    if (token) {
-      getCurrentUser()
-        .then((res) => setUser(res.data))
-        .catch(() => {
-          localStorage.removeItem('token');
-        })
-        .finally(() => setLoading(false));
-    } else {
-      setLoading(false);
+    const userInfo = localStorage.getItem('user');
+    if (token && userInfo) {
+      try {
+        setUser(JSON.parse(userInfo));
+      } catch (e) {
+        localStorage.removeItem('user');
+      }
     }
+    setLoading(false);
   }, []);
 
   const login = async (username, password) => {
-    const res = await apiLogin({ username, password });
+    const res = await auth.login({ username, password });
     const { token, user: userData } = res.data;
     localStorage.setItem('token', token);
     localStorage.setItem('user', JSON.stringify(userData));

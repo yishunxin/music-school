@@ -34,6 +34,13 @@ export const login = (data) => api.post('/auth/login', data);
 export const changePassword = (data) => api.post('/auth/change-password', data);
 export const getCurrentUser = () => api.get('/auth/me');
 
+// Auth 别名适配器 - 供 AuthContext 使用
+export const auth = {
+  login,
+  changePassword,
+  getCurrentUser,
+};
+
 // User APIs
 export const getUsers = () => api.get('/auth/users');
 export const createUser = (data) => api.post('/auth/users', data);
@@ -87,5 +94,56 @@ export const generateSalary = (data) => api.post('/transactions/salary/generate'
 export const paySalary = (id) => api.post('/transactions/salary/pay', { id });
 export const getTeacherMonthDetail = (teacherId, month) =>
   api.get(`/transactions/teacher-month/${teacherId}/${month}`);
+
+// API 别名适配器 - 提供统一的 API 对象结构供页面使用
+export const users = {
+  list: getUsers,
+  create: createUser,
+  update: updateUser,
+  delete: deleteUser,
+};
+
+export const teachers = {
+  list: getTeachers,
+  get: getTeacher,
+  create: createTeacher,
+  update: updateTeacher,
+  delete: deleteTeacher,
+};
+
+export const courseTypes = {
+  list: getCourseTypes,
+  get: getCourseType,
+  create: createCourseType,
+  update: updateCourseType,
+  delete: deleteCourseType,
+};
+
+export const students = {
+  list: getStudents,
+  get: getStudent,
+  getCourses: getStudentCourses,
+  create: createStudent,
+  update: updateStudent,
+  delete: deleteStudent,
+};
+
+export const courses = {
+  recharge,
+  signIn,
+  records: getCourseLogs,
+  deleteRecord: deleteCourseLog,
+  stats: getCourseStats,
+  lowBalance: getLowBalance,
+};
+
+export const transactions = {
+  list: getTransactions,
+  create: createTransaction,
+  update: updateTransaction,
+  delete: deleteTransaction,
+  summary: getTransactionStats,
+  categories: getTransactionCategories,
+};
 
 export default api;

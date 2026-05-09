@@ -8,10 +8,39 @@
         "profession": "高级开发工程师",
         "avatarUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/avatars/02-Engineering/SeniorDeveloper/SeniorDeveloper.png",
         "promptUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/experts/02-Engineering/SeniorDeveloper/SeniorDeveloper_zh.md",
-        "usedAt": 1775272876984,
+        "usedAt": 1776493244458,
         "industryId": "all"
+      },
+      {
+        "expertId": "ApiTestingExpert",
+        "name": "Harper",
+        "profession": "API测试专家",
+        "avatarUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/avatars/08-QualityAssurance/ApiTestingExpert/ApiTestingExpert.png",
+        "promptUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/experts/08-QualityAssurance/ApiTestingExpert/ApiTestingExpert_zh.md",
+        "usedAt": 1775455572168,
+        "industryId": "11-ProfessionalServices"
+      }
+    ],
+    "2d0f827347854fbab4ff13a95f411950": [
+      {
+        "expertId": "UiDesigner",
+        "name": "像素君",
+        "profession": "UI设计师",
+        "avatarUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/avatars/01-Design/UiDesigner/UiDesigner.png",
+        "promptUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/experts/01-Design/UiDesigner/UiDesigner_zh.md",
+        "usedAt": 1776493838826,
+        "industryId": "01-Design"
+      },
+      {
+        "expertId": "ApiTestingExpert",
+        "name": "Harper",
+        "profession": "API测试专家",
+        "avatarUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/avatars/08-QualityAssurance/ApiTestingExpert/ApiTestingExpert.png",
+        "promptUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/experts/08-QualityAssurance/ApiTestingExpert/ApiTestingExpert_zh.md",
+        "usedAt": 1775916921924,
+        "industryId": "11-ProfessionalServices"
       }
     ]
   },
-  "lastUpdated": 1775288952769
+  "lastUpdated": 1776494430955
 }
