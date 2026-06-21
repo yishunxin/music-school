@@ -160,15 +160,16 @@ router.get('/stats', authMiddleware, async (req, res) => {
       GROUP BY category
     `, params);
 
-    // 月度趋势（最近6个月）- SQLite 语法 (strftime 代替 DATE_FORMAT)
+    // 月度趋势（最近6个月）- 跨方言兼容
+    const monthExpr = db.dateFormatSql('transaction_date', '%Y-%m');
     const monthlyTrend = await db.query(`
       SELECT
-        strftime('%Y-%m', transaction_date) as month,
+        ${monthExpr} as month,
         SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income,
         SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expense
       FROM transactions
-      WHERE transaction_date >= date('now', '-6 months')
-      GROUP BY strftime('%Y-%m', transaction_date)
+      WHERE transaction_date >= ${db.intervalSql(6)}
+      GROUP BY ${monthExpr}
       ORDER BY month
     `);
 
