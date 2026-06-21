@@ -81,6 +81,48 @@ transactions (收支记录)
 3. **教师课酬**：每次上课计算教师费用 = 总费用 ÷ 购买课时 ÷ 2
 4. **工资月结**：每月汇总教师上课记录生成工资
 
+## 项目结构
+
+```
+music-school/
+├── .memory/                    # 记忆文件
+│   ├── MEMORY.md             # 项目长期记忆
+│   └── YYYY-MM-DD.md         # 每日开发日志
+│
+├── docs/                       # 项目文档
+│   ├── requirements/          # 需求文档
+│   │   └── SPEC.md           # 需求规格文档
+│   ├── design/               # 设计文档
+│   │   ├── UI-DESIGN.md     # UI设计规范
+│   │   └── PROTOTYPE.md     # 原型说明
+│   └── development/          # 开发文档
+│       └── API.md           # API文档
+│
+├── logs/                       # 日志目录
+│   ├── error.log             # 错误日志
+│   └── debug.log             # 调试日志
+│
+├── client/                     # 前端 React 应用
+│   ├── src/
+│   │   ├── api/             # API 接口
+│   │   ├── components/      # 公共组件
+│   │   ├── pages/          # 页面组件
+│   │   ├── App.jsx         # 主应用
+│   │   └── main.jsx        # 入口文件
+│   ├── index.html
+│   ├── SPEC.md              # (已迁移至 docs/)
+│   └── vite.config.js
+│
+├── server/                     # 后端 Express 应用
+│   ├── routes/              # 路由
+│   ├── database.js         # 数据库连接
+│   └── index.js            # 入口文件
+│
+├── CHANGELOG.md              # 版本变更记录
+├── DEPLOY.md                 # 部署指南
+└── README.md                 # 项目说明
+```
+
 ## 开发环境
 
 | 项目 | 配置 |
@@ -159,27 +201,6 @@ mysql -u root -p'MusicSchool@2026' music_school -e "SHOW TABLES;"
 | 开发 | admin | 123456 |
 | 生产 | admin | 123456 |
 
-## 目录结构
-
-```
-music-school/
-├── client/                    # 前端 React 应用
-│   ├── src/
-│   │   ├── api/              # API 接口
-│   │   ├── components/       # 公共组件
-│   │   ├── pages/            # 页面组件
-│   │   ├── App.jsx           # 主应用
-│   │   └── main.jsx          # 入口文件
-│   ├── index.html
-│   └── vite.config.js
-├── server/                    # 后端 Express 应用
-│   ├── routes/               # 路由
-│   ├── database.js           # 数据库连接
-│   └── index.js              # 入口文件
-├── CHANGELOG.md              # 版本变更记录
-└── DEPLOY.md                 # 部署指南
-```
-
 ## GitHub
 
 - 仓库：https://github.com/yishunxin/music-school
@@ -187,4 +208,4 @@ music-school/
 
 ---
 
-*最后更新：2026-04-12*
+*最后更新：2026-05-10*

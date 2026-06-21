@@ -3,12 +3,14 @@
 ## 项目记忆
 
 ### 琴行课时管理系统
-- 技术栈: React + Node.js + Express + MySQL (原 SQLite)
+- 技术栈: React + Node.js + Express + better-sqlite3 (本地开发) / MySQL (云服务器生产)
 - 项目路径: /Users/yishunxin/WorkBuddy/20260329231952
 - GitHub: https://github.com/yishunxin/music-school
 - 后端端口: 3001
 - 前端端口: 5173
+- 本地数据库: /Users/yishunxin/WorkBuddy/20260329231952/music_school.db
 - 默认管理员账号: admin / 123456
+- Vite proxy: /api -> localhost:3001 (client/vite.config.js)
 
 ### 功能模块
 1. 登录认证 (JWT)

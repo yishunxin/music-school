@@ -1,69 +1,72 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import BottomNav from './BottomNav';
-import { Music } from 'lucide-react';
+import TopBar from './TopBar';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { LogOut } from 'lucide-react';
 
 export default function Layout() {
-  const { user, logout } = useAuth();
+  const { logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [isMobile, setIsMobile] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [location.pathname]);
 
   const handleLogout = () => {
     logout();
     navigate('/login');
   };
 
+  if (isMobile) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <TopBar onMenuClick={() => setSidebarOpen(true)} />
+        <main className="pb-20">
+          <Outlet />
+        </main>
+        <BottomNav />
+
+        {/* 移动端侧边栏抽屉 */}
+        {sidebarOpen && (
+          <>
+            <div
+              className="fixed inset-0 bg-black/50 z-40 animate-fade-in"
+              onClick={() => setSidebarOpen(false)}
+            />
+            <div className="fixed top-0 left-0 bottom-0 w-64 z-50 animate-slide-in shadow-2xl">
+              <Sidebar onClose={() => setSidebarOpen(false)} onLogout={handleLogout} />
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-bg-primary">
+    <div className="min-h-screen bg-gray-50">
       {/* Desktop Sidebar */}
-      <Sidebar />
+      <div className="fixed top-0 left-0 bottom-0 w-60 z-30">
+        <Sidebar onLogout={handleLogout} />
+      </div>
 
       {/* Main Content */}
-      <div className="md:ml-56 pb-20 md:pb-0">
-        {/* Top Header */}
-        <header className="bg-white border-b border-gray-200 sticky top-0 z-30">
-          <div className="flex items-center justify-between px-4 md:px-6 py-4">
-            {/* Mobile Logo */}
-            <div className="flex items-center gap-2 md:hidden">
-              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                <Music className="w-4 h-4 text-white" />
-              </div>
-              <span className="font-semibold text-gray-800">琴行管理</span>
-            </div>
-
-            {/* Page Title (mobile hidden, shown via route) */}
-
-            {/* User Info */}
-            <div className="flex items-center gap-3 ml-auto">
-              <div className="hidden md:flex items-center gap-2">
-                <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
-                  <span className="text-primary font-medium text-sm">
-                    {user?.username?.charAt(0).toUpperCase() || 'U'}
-                  </span>
-                </div>
-                <span className="text-gray-700 font-medium">{user?.username || '用户'}</span>
-              </div>
-              <button
-                onClick={handleLogout}
-                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                title="退出登录"
-              >
-                <LogOut className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-        </header>
-
-        {/* Page Content */}
-        <main className="p-4 md:p-6">
+      <div className="ml-60">
+        <main className="p-6">
           <Outlet />
         </main>
       </div>
-
-      {/* Mobile Bottom Nav */}
-      <BottomNav />
     </div>
   );
 }

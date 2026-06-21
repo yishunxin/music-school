@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import Layout from './components/layout/Layout';
+import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Teachers from './pages/Teachers';
@@ -16,9 +16,9 @@ function PrivateRoute({ children }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-bg-primary">
+      <div className="min-h-screen flex items-center justify-center bg-[var(--color-bg-primary)]">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+          <div className="w-10 h-10 border-4 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" />
           <p className="text-gray-500">加载中...</p>
         </div>
       </div>
@@ -47,9 +47,6 @@ function AppRoutes() {
         <Route path="transactions" element={<Transactions />} />
         <Route path="users" element={<Users />} />
       </Route>
-
-      {/* Mobile Only Route */}
-      <Route path="/mobile/mine" element={<MobileMine />} />
 
       {/* Catch All */}
       <Route path="*" element={<Navigate to="/dashboard" />} />

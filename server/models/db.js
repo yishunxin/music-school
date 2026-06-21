@@ -1,96 +1,83 @@
-const mysql = require('mysql2/promise');
+const Database = require('better-sqlite3');
 const bcrypt = require('bcryptjs');
+const path = require('path');
 require('dotenv').config();
 
-const pool = mysql.createPool({
-  host: process.env.DB_HOST || 'localhost',
-  port: process.env.DB_PORT || 3306,
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'music_school',
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0
-});
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, '../../music_school.db');
+const db = new Database(DB_PATH);
+db.pragma('journal_mode = WAL');
+db.pragma('foreign_keys = ON');
 
-let db;
-
-async function initDatabase() {
+function initDatabase() {
   try {
-    // 创建数据库连接测试
-    db = await pool.getConnection();
-    console.log('✅ MySQL 数据库连接成功');
+    console.log('✅ SQLite 数据库连接成功:', DB_PATH);
 
-    // 初始化表结构
-    await db.query(`
+    // 创建表结构 (SQLite 语法)
+    db.exec(`
       CREATE TABLE IF NOT EXISTS users (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        username VARCHAR(50) UNIQUE NOT NULL,
-        password VARCHAR(255) NOT NULL,
-        role VARCHAR(20) DEFAULT 'admin',
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        role TEXT DEFAULT 'admin',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
-    await db.query(`
+    db.exec(`
       CREATE TABLE IF NOT EXISTS teachers (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        name VARCHAR(100) NOT NULL,
-        phone VARCHAR(20),
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        phone TEXT,
         subjects TEXT,
-        hire_date DATE,
+        hire_date TEXT,
         memo TEXT,
-        status VARCHAR(20) DEFAULT 'active',
+        status TEXT DEFAULT 'active',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
-    await db.query(`
+    db.exec(`
       CREATE TABLE IF NOT EXISTS course_types (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        name VARCHAR(100) NOT NULL,
-        subject VARCHAR(50) NOT NULL,
-        level INT,
-        hours_unit DECIMAL(5,2) DEFAULT 1,
-        price DECIMAL(10,2) NOT NULL,
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        level INTEGER,
+        hours_unit REAL DEFAULT 1,
+        price REAL NOT NULL,
         memo TEXT,
-        status VARCHAR(20) DEFAULT 'active',
+        status TEXT DEFAULT 'active',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
-    await db.query(`
+    db.exec(`
       CREATE TABLE IF NOT EXISTS students (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        name VARCHAR(100) NOT NULL,
-        gender VARCHAR(10),
-        age INT,
-        phone VARCHAR(20),
-        guardian_name VARCHAR(100),
-        guardian_phone VARCHAR(20),
-        teacher_id INT NOT NULL,
-        course_type_id INT NOT NULL,
-        remaining_hours DECIMAL(10,2) DEFAULT 0,
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        gender TEXT,
+        age INTEGER,
+        phone TEXT,
+        guardian_name TEXT,
+        guardian_phone TEXT,
         memo TEXT,
-        status VARCHAR(20) DEFAULT 'active',
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (teacher_id) REFERENCES teachers(id),
-        FOREIGN KEY (course_type_id) REFERENCES course_types(id)
+        status TEXT DEFAULT 'active',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
-    await db.query(`
+    db.exec(`
       CREATE TABLE IF NOT EXISTS recharges (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        student_id INT NOT NULL,
-        course_type_id INT NOT NULL,
-        teacher_id INT NOT NULL,
-        buy_hours DECIMAL(10,2) NOT NULL,
-        gift_hours DECIMAL(10,2) NOT NULL,
-        total_hours DECIMAL(10,2) NOT NULL,
-        total_fee DECIMAL(10,2) NOT NULL,
-        unit_point_fee DECIMAL(10,2),
-        recharge_date DATE NOT NULL,
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        student_id INTEGER NOT NULL,
+        course_type_id INTEGER NOT NULL,
+        teacher_id INTEGER NOT NULL,
+        buy_hours REAL NOT NULL,
+        gift_hours REAL NOT NULL,
+        total_hours REAL NOT NULL,
+        total_fee REAL NOT NULL,
+        unit_point_fee REAL,
+        practice_fee REAL DEFAULT 0,
+        recharge_date TEXT NOT NULL,
         memo TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (student_id) REFERENCES students(id),
@@ -99,17 +86,18 @@ async function initDatabase() {
       )
     `);
 
-    await db.query(`
+    db.exec(`
       CREATE TABLE IF NOT EXISTS course_logs (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        student_id INT NOT NULL,
-        teacher_id INT NOT NULL,
-        course_type_id INT NOT NULL,
-        hours DECIMAL(10,2) NOT NULL,
-        unit_fee DECIMAL(10,2) NOT NULL,
-        total_fee DECIMAL(10,2) NOT NULL,
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        student_id INTEGER NOT NULL,
+        teacher_id INTEGER NOT NULL,
+        course_type_id INTEGER NOT NULL,
+        recharge_id INTEGER,
+        hours REAL NOT NULL,
+        unit_fee REAL NOT NULL,
+        total_fee REAL NOT NULL,
         course_date DATETIME NOT NULL,
-        recharge_id INT,
+        sign_in_date TEXT,
         memo TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (student_id) REFERENCES students(id),
@@ -119,29 +107,29 @@ async function initDatabase() {
       )
     `);
 
-    await db.query(`
+    db.exec(`
       CREATE TABLE IF NOT EXISTS transactions (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        type VARCHAR(20) NOT NULL,
-        amount DECIMAL(12,2) NOT NULL,
-        category VARCHAR(50) NOT NULL,
-        ref_id INT,
-        ref_type VARCHAR(30),
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT NOT NULL,
+        amount REAL NOT NULL,
+        category TEXT NOT NULL,
+        ref_id INTEGER,
+        ref_type TEXT,
         description TEXT,
-        transaction_date DATE NOT NULL,
+        transaction_date TEXT NOT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
-    await db.query(`
+    db.exec(`
       CREATE TABLE IF NOT EXISTS teacher_salary (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        teacher_id INT NOT NULL,
-        month VARCHAR(7) NOT NULL,
-        total_hours DECIMAL(10,2) NOT NULL,
-        unit_price DECIMAL(10,2) NOT NULL,
-        total_fee DECIMAL(12,2) NOT NULL,
-        status VARCHAR(20) DEFAULT 'pending',
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        teacher_id INTEGER NOT NULL,
+        month TEXT NOT NULL,
+        total_hours REAL NOT NULL,
+        unit_price REAL NOT NULL,
+        total_fee REAL NOT NULL,
+        status TEXT DEFAULT 'pending',
         paid_at DATETIME,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (teacher_id) REFERENCES teachers(id)
@@ -151,16 +139,15 @@ async function initDatabase() {
     console.log('✅ 数据库表结构初始化成功');
 
     // 检查是否有管理员账号
-    const [admins] = await db.query('SELECT * FROM users WHERE username = ?', ['admin']);
-    if (admins.length === 0) {
+    const admins = db.prepare('SELECT * FROM users WHERE username = ?').get('admin');
+    if (!admins) {
       const hashedPassword = bcrypt.hashSync('123456', 10);
-      await db.query('INSERT INTO users (username, password) VALUES (?, ?)', ['admin', hashedPassword]);
+      db.prepare('INSERT INTO users (username, password) VALUES (?, ?)').run('admin', hashedPassword);
       console.log('✅ 默认管理员账号已创建: admin / 123456');
     } else {
       console.log('✅ 管理员账号已存在');
     }
 
-    db.release();
     return true;
   } catch (err) {
     console.error('❌ 数据库初始化失败:', err.message);
@@ -169,21 +156,37 @@ async function initDatabase() {
 }
 
 // 封装常用的数据库操作
-const query = async (sql, params) => {
-  const connection = await pool.getConnection();
+const query = (sql, params = []) => {
   try {
-    const [results] = await connection.query(sql, params);
-    return results;
-  } finally {
-    connection.release();
+    if (sql.trim().toUpperCase().startsWith('SELECT')) {
+      return db.prepare(sql).all(params);
+    } else {
+      const info = db.prepare(sql).run(params);
+      return { insertId: info.lastInsertRowid, changes: info.changes };
+    }
+  } catch (err) {
+    console.error('SQL Error:', sql, err.message);
+    throw err;
   }
 };
 
-const getConnection = () => pool.getConnection();
+const get = (sql, params = []) => {
+  return db.prepare(sql).get(params);
+};
+
+const all = (sql, params = []) => {
+  return db.prepare(sql).all(params);
+};
+
+const run = (sql, params = []) => {
+  return db.prepare(sql).run(params);
+};
 
 module.exports = {
-  pool,
+  db,
   query,
-  getConnection,
-  initDatabase
+  get,
+  all,
+  run,
+  initDatabase,
 };

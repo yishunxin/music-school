@@ -1,7 +1,6 @@
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { User, Settings, Bell, HelpCircle, LogOut, ChevronRight } from 'lucide-react';
-import Card from '../components/common/Card';
+import { Settings, ChevronRight, LogOut, User as UserIcon, Shield } from 'lucide-react';
 
 export default function MobileMine() {
   const { user, logout } = useAuth();
@@ -15,68 +14,67 @@ export default function MobileMine() {
   };
 
   const menuItems = [
-    { icon: User, label: '个人信息', onClick: () => {} },
-    { icon: Bell, label: '消息通知', onClick: () => {} },
-    { icon: HelpCircle, label: '帮助中心', onClick: () => {} },
-    { icon: Settings, label: '系统设置', onClick: () => {} },
+    { icon: UserIcon, label: '账号设置', color: 'text-gray-600' },
+    { icon: Settings, label: '系统设置', color: 'text-gray-600' },
   ];
 
   return (
-    <div className="space-y-6 pb-20">
-      {/* Header */}
-      <div className="bg-gradient-to-br from-primary to-primary-dark text-white p-6 rounded-b-3xl">
-        <div className="flex items-center gap-4">
-          <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center">
-            <span className="text-2xl font-bold">
-              {user?.username?.charAt(0).toUpperCase() || 'U'}
-            </span>
-          </div>
-          <div>
-            <h2 className="text-xl font-semibold">{user?.username || '用户'}</h2>
-            <p className="text-white/70 text-sm mt-1">
-              {user?.role === 'admin' ? '管理员' : '普通用户'}
-            </p>
-          </div>
+    <div className="pb-24">
+      {/* Header - 紫色渐变设计,头像居中 + 用户名 + 角色 */}
+      <div
+        className="px-5 pt-10 pb-20 text-center text-white"
+        style={{ background: 'linear-gradient(135deg, #3B82F6 0%, #6366F1 100%)' }}
+      >
+        <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-white/20 border-[3px] border-white/30 mb-4">
+          <span className="text-3xl font-bold">
+            {user?.username?.charAt(0)?.toUpperCase() || 'A'}
+          </span>
         </div>
+        <h2 className="text-xl font-semibold mb-1">{user?.username || '管理员'}</h2>
+        <p className="text-sm text-indigo-100">
+          {user?.role === 'super_admin' ? '超级管理员' : user?.role === 'admin' ? '系统管理员' : '普通用户'}
+        </p>
       </div>
 
-      {/* Menu */}
-      <Card>
-        <div className="divide-y divide-gray-100">
+      {/* Menu - 白色圆角卡片,上移覆盖在 header 之上 */}
+      <div className="px-4 -mt-14">
+        <div
+          className="bg-white overflow-hidden"
+          style={{ borderRadius: '20px', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' }}
+        >
           {menuItems.map((item, idx) => {
             const Icon = item.icon;
             return (
               <button
                 key={idx}
-                onClick={item.onClick}
-                className="w-full flex items-center justify-between py-4 px-2 hover:bg-gray-50 transition-colors"
+                className={`w-full flex items-center gap-3.5 py-4 px-4 hover:bg-gray-50 active:bg-gray-100 transition-colors ${
+                  idx < menuItems.length - 1 ? 'border-b border-gray-100' : ''
+                }`}
               >
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center">
-                    <Icon className="w-4 h-4 text-primary" />
-                  </div>
-                  <span className="font-medium text-gray-800">{item.label}</span>
+                <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
+                  <Icon className={`w-5 h-5 ${item.color}`} />
                 </div>
-                <ChevronRight className="w-5 h-5 text-gray-400" />
+                <span className="flex-1 text-left text-[15px] text-gray-800 font-medium">{item.label}</span>
+                <ChevronRight className="w-5 h-5 text-gray-400 shrink-0" />
               </button>
             );
           })}
         </div>
-      </Card>
+      </div>
 
-      {/* Logout */}
-      <Card>
+      {/* Logout - 整行红色按钮 */}
+      <div className="px-4 mt-4">
         <button
           onClick={handleLogout}
-          className="w-full flex items-center justify-center gap-2 py-3 text-error hover:bg-error/5 rounded-xl transition-colors"
+          className="w-full flex items-center justify-center gap-2 py-4 bg-[#FEF2F2] rounded-2xl text-[#EF4444] active:opacity-80 transition-opacity"
         >
           <LogOut className="w-5 h-5" />
-          <span className="font-medium">退出登录</span>
+          <span className="font-medium text-[15px]">退出登录</span>
         </button>
-      </Card>
+      </div>
 
       {/* Version */}
-      <p className="text-center text-gray-400 text-sm">
+      <p className="text-center text-gray-400 text-xs mt-6">
         琴行管理系统 v2.0
       </p>
     </div>
