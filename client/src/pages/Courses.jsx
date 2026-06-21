@@ -352,7 +352,7 @@ function SignInTab() {
     const student = studentOptions.find(s => s.id === Number(studentId));
     setSelectedStudent(student);
     if (student?.courses_summary?.length > 0) {
-      const availableCourse = student.courses_summary.find(c => c.remaining_hours > 0);
+      const availableCourse = student.courses_summary.find(c => Number(c.remaining_hours) > 0);
       if (availableCourse) {
         setSelectedCourse(availableCourse.recharge_id);
       } else {
@@ -390,7 +390,7 @@ function SignInTab() {
     return <div className="text-center py-12 text-gray-500">加载中...</div>;
   }
 
-  const lowHoursWarning = selectedStudent?.courses_summary?.some(c => c.remaining_hours <= 1);
+  const lowHoursWarning = selectedStudent?.courses_summary?.some(c => Number(c.remaining_hours) <= 1);
 
   return (
     <div className="space-y-4">
@@ -417,7 +417,7 @@ function SignInTab() {
             >
               <option value="">请选择学生</option>
               {studentOptions.map((s) => {
-                const hasHours = s.courses_summary?.some(c => c.remaining_hours > 0);
+                const hasHours = s.courses_summary?.some(c => Number(c.remaining_hours) > 0);
                 return (
                   <option key={s.id} value={s.id} disabled={!hasHours}>
                     {s.name} {hasHours ? '' : '(无可用课时)'}
@@ -437,10 +437,10 @@ function SignInTab() {
               >
                 <option value="">请选择课程</option>
                 {selectedStudent.courses_summary
-                  .filter(c => c.remaining_hours > 0)
+                  .filter(c => Number(c.remaining_hours) > 0)
                   .map((c) => (
                     <option key={c.recharge_id} value={c.recharge_id}>
-                      {c.course_type_name} - 剩余 {c.remaining_hours} 课时 ({c.teacher_name})
+                      {c.course_type_name} - 剩余 {Math.floor(Number(c.remaining_hours))} 课时 ({c.teacher_name})
                     </option>
                   ))
                 }
@@ -463,11 +463,11 @@ function SignInTab() {
                   <div key={idx} className="flex justify-between text-sm">
                     <span className="text-gray-700">{c.course_type_name} <span className="text-gray-400 text-xs">({c.teacher_name})</span></span>
                     <span className={`font-medium ${
-                      c.remaining_hours <= 0.5 ? 'text-red-600' :
-                      c.remaining_hours <= 1 ? 'text-amber-600' :
+                      Number(c.remaining_hours) <= 0.5 ? 'text-red-600' :
+                      Number(c.remaining_hours) <= 1 ? 'text-amber-600' :
                       'text-green-600'
                     }`}>
-                      {c.remaining_hours} 课时
+                      {Math.floor(Number(c.remaining_hours))} 课时
                     </span>
                   </div>
                 ))}

@@ -234,12 +234,12 @@ export default function Students() {
                     {mainCourse && (
                       <div className="text-right">
                         <div className={`text-lg font-bold ${
-                          mainCourse.remaining_hours <= 0
+                          Number(mainCourse.remaining_hours) <= 0
                             ? 'text-[#EF4444]'
-                            : mainCourse.remaining_hours <= 1
+                            : Number(mainCourse.remaining_hours) <= 1
                               ? 'text-[#F59E0B]'
                               : 'text-gray-900'
-                        }`}>{mainCourse.remaining_hours}</div>
+                        }`}>{Math.floor(Number(mainCourse.remaining_hours) || 0)}</div>
                         <div className="text-[10px] text-gray-500">课时</div>
                       </div>
                     )}
@@ -249,11 +249,11 @@ export default function Students() {
                     {mainCourse ? (
                       <>
                         <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-600">{mainCourse.course_type_name || mainCourse.subject}</span>
-                        {mainCourse.remaining_hours <= 0 && (
+                        {Number(mainCourse.remaining_hours) <= 0 && (
                           <span className="px-2 py-0.5 rounded bg-[#FEF3C7] text-[#B45309] font-medium">剩余0课时</span>
                         )}
-                        {mainCourse.remaining_hours > 0 && mainCourse.remaining_hours <= 1 && (
-                          <span className="px-2 py-0.5 rounded bg-[#FEF3C7] text-[#B45309] font-medium">剩余{mainCourse.remaining_hours}课时</span>
+                        {Number(mainCourse.remaining_hours) > 0 && Number(mainCourse.remaining_hours) <= 1 && (
+                          <span className="px-2 py-0.5 rounded bg-[#FEF3C7] text-[#B45309] font-medium">剩余{Math.floor(Number(mainCourse.remaining_hours))}课时</span>
                         )}
                       </>
                     ) : (
@@ -266,13 +266,13 @@ export default function Students() {
 
                   <div className="flex justify-end gap-2 pt-3 border-t border-gray-100">
                     <button
-                      className="flex-1 text-gray-500 hover:text-gray-700 text-sm font-medium py-2 rounded-lg hover:bg-gray-100 transition-base"
+                      className="text-gray-500 hover:text-gray-700 text-sm font-medium px-4 py-1.5 rounded-lg hover:bg-gray-100 transition-base"
                       onClick={() => { setEditData(student); setModalOpen(true); }}
                     >
                       编辑
                     </button>
                     <button
-                      className="flex-1 text-red-500 hover:text-red-700 text-sm font-medium py-2 rounded-lg hover:bg-red-50 transition-base"
+                      className="text-red-500 hover:text-red-700 text-sm font-medium px-4 py-1.5 rounded-lg hover:bg-red-50 transition-base"
                       onClick={() => handleDelete(student.id)}
                     >
                       删除
@@ -335,8 +335,8 @@ export default function Students() {
                       </td>
                       <td className="px-5 py-4">
                         {mainCourse ? (
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getHoursStyle(mainCourse.remaining_hours)}`}>
-                            {mainCourse.remaining_hours} 课时
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getHoursStyle(Number(mainCourse.remaining_hours))}`}>
+                            {Math.floor(Number(mainCourse.remaining_hours))} 课时
                           </span>
                         ) : (
                           <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-500">

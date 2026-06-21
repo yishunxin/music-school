@@ -201,14 +201,14 @@ export default function CourseTypes() {
                   </div>
                   
                   <div className="flex justify-end gap-2 pt-3 border-t border-gray-100">
-                    <button 
-                      className="flex-1 text-gray-500 hover:text-gray-700 text-sm font-medium py-2 rounded-lg hover:bg-gray-100 transition-base"
+                    <button
+                      className="text-gray-500 hover:text-gray-700 text-sm font-medium px-4 py-1.5 rounded-lg hover:bg-gray-100 transition-base"
                       onClick={() => { setEditData(course); setModalOpen(true); }}
                     >
                       编辑
                     </button>
-                    <button 
-                      className="flex-1 text-red-500 hover:text-red-700 text-sm font-medium py-2 rounded-lg hover:bg-red-50 transition-base"
+                    <button
+                      className="text-red-500 hover:text-red-700 text-sm font-medium px-4 py-1.5 rounded-lg hover:bg-red-50 transition-base"
                       onClick={() => handleDelete(course.id)}
                     >
                       删除

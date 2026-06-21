@@ -63,15 +63,15 @@ export default function Dashboard() {
 
       // 计算总剩余课时
       const totalHours = allStudents.reduce((sum, s) => {
-        return sum + (s.courses_summary?.reduce((cs, c) => cs + (c.remaining_hours || 0), 0) || 0);
+        return sum + (s.courses_summary?.reduce((cs, c) => cs + (Number(c.remaining_hours) || 0), 0) || 0);
       }, 0);
 
       // 计算课时不足的学生
       const lowBalance = allStudents.filter((s) =>
-        s.courses_summary?.some(c => c.remaining_hours <= 1)
+        s.courses_summary?.some(c => Number(c.remaining_hours) <= 1)
       ).map(s => ({
         ...s,
-        lowestCourse: s.courses_summary?.find(c => c.remaining_hours <= 1)
+        lowestCourse: s.courses_summary?.find(c => Number(c.remaining_hours) <= 1)
       }));
 
       setStats({
@@ -195,7 +195,7 @@ export default function Dashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-500">剩余总课时</p>
-                <p className="text-3xl font-bold text-gray-900 mt-1">{loading ? '-' : stats.totalHours}</p>
+                <p className="text-3xl font-bold text-gray-900 mt-1">{loading ? '-' : Math.floor(stats.totalHours)}</p>
               </div>
               <div className="w-12 h-12 rounded-xl bg-orange-50 flex items-center justify-center">
                 <Clock className="w-6 h-6 text-orange-600" />
