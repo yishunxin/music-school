@@ -9,6 +9,8 @@ build/
 # Database
 *.sqlite
 *.db
+*.db-shm
+*.db-wal
 
 # Environment
 .env
@@ -29,3 +31,7 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+
+# WorkBuddy & Memory (local workflow files, not for version control)
+.workbuddy/
+.memory/
